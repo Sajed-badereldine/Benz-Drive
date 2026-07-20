@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import styles from '@/app/auth.module.css';
 import Link from 'next/link';
+import { Cloud, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,6 +15,7 @@ export default function LoginPage() {
   // Login form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   
   // 2FA state management
   const [requires2FA, setRequires2FA] = useState(false);
@@ -119,59 +121,85 @@ export default function LoginPage() {
 
       <div className="glass-panel">
         <div className={styles.card}>
-          <h1 className={styles.title}>BenzDrive</h1>
+          {/* Brand Header */}
+          <div style={{ textAlign: 'center' }}>
+            <div className={styles.logoIconContainer}>
+              <Cloud size={32} style={{ color: 'var(--primary-container, #0070f3)' }} />
+            </div>
+            <h1 className={styles.title} style={{ marginBottom: '4px' }}>BenzDrive</h1>
+            <p className={styles.subtitle} style={{ margin: 0 }}>
+              {requires2FA ? 'Two-Factor Authentication' : 'Welcome Back'}
+            </p>
+          </div>
           
           <div key={requires2FA ? '2fa' : 'login'} className={styles.fadeScale}>
             {!requires2FA ? (
               <>
-                <p className={styles.subtitle}>Sign in to manage your files securely</p>
                 <form onSubmit={handleSignIn} className={styles.form}>
+                  {/* Email Field */}
                   <div className={styles.formGroup}>
                     <label htmlFor="email" className={styles.label}>Email Address</label>
-                    <input
-                      type="email"
-                      id="email"
-                      placeholder="name@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className={styles.input}
-                      required
-                    />
+                    <div className={styles.inputWrapper}>
+                      <Mail size={18} className={styles.inputIcon} />
+                      <input
+                        type="email"
+                        id="email"
+                        placeholder="name@company.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className={`${styles.input} ${styles.inputWithIcon}`}
+                        required
+                      />
+                    </div>
                   </div>
                   
+                  {/* Password Field */}
                   <div className={styles.formGroup}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <label htmlFor="password" className={styles.label}>Password</label>
                       <Link href="/forgot-password" className={styles.link} style={{ fontSize: '12px' }}>
-                        Forgot Password?
+                        Forgot password?
                       </Link>
                     </div>
-                    <input
-                      type="password"
-                      id="password"
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className={styles.input}
-                      required
-                    />
+                    <div className={styles.inputWrapper}>
+                      <Lock size={18} className={styles.inputIcon} />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        id="password"
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className={`${styles.input} ${styles.inputWithIcon}`}
+                        style={{ paddingRight: '42px' }}
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className={styles.togglePasswordBtn}
+                        title={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
                   </div>
 
+                  {/* Submit Button */}
                   <button type="submit" disabled={loading} className={styles.button}>
                     {loading ? <div className={styles.spinner}></div> : 'Sign In'}
                   </button>
                 </form>
                 
-                <p className={styles.linkText}>
-                  New to BenzDrive?{' '}
-                  <Link href="/signup" className={styles.link}>
-                    Create an account
+                <p className={styles.linkText} style={{ marginTop: '16px' }}>
+                  Don&apos;t have an account?{' '}
+                  <Link href="/signup" className={styles.link} style={{ fontWeight: 700 }}>
+                    Sign up
                   </Link>
                 </p>
               </>
             ) : (
               <>
-                <p className={styles.subtitle}>
+                <p className={styles.subtitle} style={{ fontSize: '13px', lineHeight: '1.5' }}>
                   We sent a 6-digit security code to <strong>{email}</strong>. Enter it below to sign in.
                 </p>
                 <form onSubmit={handle2FAVerify} className={styles.form}>
