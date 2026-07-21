@@ -37,6 +37,7 @@ export class FilesService {
       s3Config.credentials = {
         accessKeyId,
         secretAccessKey,
+        ...(process.env.AWS_SESSION_TOKEN && { sessionToken: process.env.AWS_SESSION_TOKEN }),
       };
     }
 
