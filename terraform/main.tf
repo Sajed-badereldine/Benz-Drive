@@ -48,7 +48,7 @@ module "lambda" {
   mail_user          = var.mail_user
   mail_password      = var.mail_password
   mail_from          = var.mail_from
-  frontend_url       = var.allowed_origins[0]
+  allowed_origins    = var.allowed_origins
 }
 
 # 4. RDS Module (PostgreSQL Database)

@@ -12,8 +12,10 @@ async function bootstrap(): Promise<Handler> {
 
     // Enable CORS for frontend requests
     nestApp.enableCors({
-      origin: [process.env.FRONTEND_URL || 'http://localhost:5233'],
+      origin: true,
       credentials: true,
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     });
 
     nestApp.useGlobalPipes(

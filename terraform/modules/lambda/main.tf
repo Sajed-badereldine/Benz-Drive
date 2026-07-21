@@ -81,10 +81,10 @@ variable "mail_from" {
   description = "SMTP sender address"
 }
 
-variable "frontend_url" {
-  type        = string
-  default     = "http://localhost:5233"
-  description = "Allowed frontend origin URL"
+variable "allowed_origins" {
+  type        = list(string)
+  default     = ["http://localhost:5233"]
+  description = "Allowed frontend origin URLs"
 }
 
 # Security group for Lambda
@@ -213,7 +213,7 @@ resource "aws_lambda_function" "backend" {
       DB_DATABASE            = var.db_name
       JWT_SECRET             = var.jwt_secret
       AWS_S3_BUCKET_NAME     = var.s3_bucket_name
-      FRONTEND_URL           = var.frontend_url
+      FRONTEND_URL           = var.allowed_origins[0]
       MAIL_HOST              = var.mail_host
       MAIL_PORT              = var.mail_port
       MAIL_USER              = var.mail_user
@@ -236,7 +236,7 @@ resource "aws_apigatewayv2_api" "http_api" {
     allow_credentials = true
     allow_headers     = ["*"]
     allow_methods     = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    allow_origins     = [var.frontend_url]
+    allow_origins     = var.allowed_origins
     max_age           = 3600
   }
 }
