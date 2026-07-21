@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { FilesService } from './files.service';
 import { CreateFolderDto } from './dto/create-folder.dto';
+import { MoveItemDto } from './dto/move-item.dto';
 import type { Response } from 'express';
 
 @Controller('files')
@@ -171,5 +172,25 @@ export class FilesController {
   @Delete('trash/empty')
   async emptyTrash(@Req() req: any) {
     return this.filesService.emptyTrash(req.user.id);
+  }
+
+  // 15. Move File (PATCH /files/:id/move)
+  @Patch(':id/move')
+  async moveFile(
+    @Param('id') id: string,
+    @Body() moveItemDto: MoveItemDto,
+    @Req() req: any,
+  ) {
+    return this.filesService.moveFile(id, moveItemDto.targetFolderId || null, req.user.id);
+  }
+
+  // 16. Move Folder (PATCH /files/folders/:id/move)
+  @Patch('folders/:id/move')
+  async moveFolder(
+    @Param('id') id: string,
+    @Body() moveItemDto: MoveItemDto,
+    @Req() req: any,
+  ) {
+    return this.filesService.moveFolder(id, moveItemDto.targetFolderId || null, req.user.id);
   }
 }

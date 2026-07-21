@@ -528,4 +528,63 @@ export class FilesService {
 
     return breadcrumbs;
   }
+
+  // 18. Move a single file to a target folder
+  async moveFile(fileId: string, targetFolderId: string | null, userId: string) {
+    const file = await this.getFileMetadata(fileId, userId, false);
+
+    if (targetFolderId) {
+      const targetFolder = await this.folderRepository.findOne({
+        where: { id: targetFolderId, userId, isTrashed: false },
+      });
+      if (!targetFolder) {
+        throw new NotFoundException('Target folder not found or is in trash');
+      }
+    }
+
+    file.folderId = targetFolderId || null;
+    await this.filesRepository.save(file);
+    return { message: 'File moved successfully', file };
+  }
+
+  // 19. Move a folder to a target folder (with cyclic nesting safeguard)
+  async moveFolder(folderId: string, targetFolderId: string | null, userId: string) {
+    const folder = await this.folderRepository.findOne({
+      where: { id: folderId, userId, isTrashed: false },
+    });
+
+    if (!folder) {
+      throw new NotFoundException('Source folder not found');
+    }
+
+    if (targetFolderId === folderId) {
+      throw new BadRequestException('Cannot move a folder into itself');
+    }
+
+    if (targetFolderId) {
+      const targetFolder = await this.folderRepository.findOne({
+        where: { id: targetFolderId, userId, isTrashed: false },
+      });
+
+      if (!targetFolder) {
+        throw new NotFoundException('Target folder not found or is in trash');
+      }
+
+      // Check for cyclic nesting loop: trace targetFolder's parents up to root
+      let checkId: string | null = targetFolder.parentFolderId;
+      while (checkId) {
+        if (checkId === folderId) {
+          throw new BadRequestException('Cannot move a folder into one of its own subfolders');
+        }
+        const parent = await this.folderRepository.findOne({
+          where: { id: checkId, userId },
+        });
+        checkId = parent ? parent.parentFolderId : null;
+      }
+    }
+
+    folder.parentFolderId = targetFolderId || null;
+    await this.folderRepository.save(folder);
+    return { message: 'Folder moved successfully', folder };
+  }
 }

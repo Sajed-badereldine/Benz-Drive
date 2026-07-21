@@ -84,6 +84,11 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCounter = useRef(0);
+
+  // Drag and Drop re-parenting states
+  const [draggedItem, setDraggedItem] = useState<{ id: string; type: 'file' | 'folder'; name: string } | null>(null);
+  const [activeDropTargetId, setActiveDropTargetId] = useState<string | null>(null);
 
   // Authenticate user on mount
   useEffect(() => {
@@ -254,22 +259,53 @@ export default function DashboardPage() {
     }
   };
 
-  // Handle Drag & Drop events
-  const handleDrag = (e: React.DragEvent) => {
+  // External File Upload Drag & Drop handlers (from Desktop OS)
+  const handleExternalDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
+
+    if (draggedItem) return; // Ignore when dragging internal items
+
+    const isFile = e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files');
+    if (!isFile) return;
+
+    dragCounter.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
       setDragActive(true);
-    } else if (e.type === 'dragleave') {
+    }
+  };
+
+  const handleExternalDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggedItem) return;
+
+    const isFile = e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files');
+    if (isFile) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  };
+
+  const handleExternalDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggedItem) return;
+
+    dragCounter.current--;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
       setDragActive(false);
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleExternalDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    dragCounter.current = 0;
     setDragActive(false);
-    
+
+    if (draggedItem) return;
+
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFileUpload(e.dataTransfer.files);
     }
@@ -412,6 +448,80 @@ export default function DashboardPage() {
     router.push('/login');
   };
 
+  // Drag and Drop item re-parenting handlers
+  const handleDragStartItem = (e: React.DragEvent, id: string, type: 'file' | 'folder', name: string) => {
+    e.stopPropagation();
+    setDraggedItem({ id, type, name });
+    e.dataTransfer.setData('application/json', JSON.stringify({ id, type, name }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEndItem = (e: React.DragEvent) => {
+    e.stopPropagation();
+    setDraggedItem(null);
+    setActiveDropTargetId(null);
+    dragCounter.current = 0;
+    setDragActive(false);
+  };
+
+  const handleDragOverTarget = (e: React.DragEvent, targetFolderId: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedItem) return;
+
+    // Proactive UX: Block self-target folder drop
+    if (draggedItem.type === 'folder' && draggedItem.id === targetFolderId) {
+      e.dataTransfer.dropEffect = 'none';
+      if (activeDropTargetId !== null) {
+        setActiveDropTargetId(null);
+      }
+      return;
+    }
+
+    e.dataTransfer.dropEffect = 'move';
+    if (activeDropTargetId !== targetFolderId) {
+      setActiveDropTargetId(targetFolderId);
+    }
+  };
+
+  const handleDragLeaveTarget = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveDropTargetId(null);
+  };
+
+  const handleDropOnTarget = async (e: React.DragEvent, targetFolderId: string | null, targetFolderName?: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveDropTargetId(null);
+
+    if (!draggedItem) return;
+    const { id, type, name } = draggedItem;
+    setDraggedItem(null);
+
+    // Proactive UX: Silent return if dropped on itself
+    if (type === 'folder' && id === targetFolderId) {
+      return;
+    }
+
+    try {
+      const endpoint = type === 'file' ? `/files/${id}/move` : `/files/folders/${id}/move`;
+      await apiFetch(endpoint, {
+        method: 'PATCH',
+        bodyData: { targetFolderId: targetFolderId === 'root' ? null : targetFolderId },
+      });
+
+      const destination = targetFolderName || (targetFolderId === 'root' || targetFolderId === null ? 'My Drive' : 'folder');
+      showToast(`Moved "${name}" to ${destination}`, 'success');
+
+      if (activeTab === 'drive') {
+        fetchFolderContents();
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to move item', 'error');
+    }
+  };
+
   // Format bytes helper
   const formatBytes = (bytes: number, decimals = 2) => {
     if (bytes === 0) return '0 Bytes';
@@ -500,15 +610,21 @@ export default function DashboardPage() {
       </aside>
 
       {/* 2. Main Workspace */}
-      <main className={styles.main} onDragEnter={handleDrag}>
+      <main
+        className={styles.main}
+        onDragEnter={handleExternalDragEnter}
+        onDragOver={handleExternalDragOver}
+        onDragLeave={handleExternalDragLeave}
+        onDrop={handleExternalDrop}
+      >
         {/* Drag and drop overlay */}
         {dragActive && (
           <div
             className={styles.dragOverlay}
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
+            onDragEnter={handleExternalDragEnter}
+            onDragOver={handleExternalDragOver}
+            onDragLeave={handleExternalDragLeave}
+            onDrop={handleExternalDrop}
           >
             <Upload size={48} style={{ marginBottom: '16px' }} />
             Drop your file here to upload directly to BenzDrive
@@ -557,7 +673,13 @@ export default function DashboardPage() {
                   </span>
                 ) : (
                   <>
-                    <span onClick={() => setCurrentFolderId('root')} className={styles.breadcrumbLink}>
+                    <span
+                      onClick={() => setCurrentFolderId('root')}
+                      onDragOver={(e) => handleDragOverTarget(e, 'root')}
+                      onDragLeave={handleDragLeaveTarget}
+                      onDrop={(e) => handleDropOnTarget(e, 'root', 'My Drive')}
+                      className={`${styles.breadcrumbLink} ${activeDropTargetId === 'root' ? styles.dropTarget : ''}`}
+                    >
                       My Drive
                     </span>
                     {breadcrumbs.map((crumb, idx) => (
@@ -565,7 +687,10 @@ export default function DashboardPage() {
                         <span style={{ opacity: 0.5 }}>/</span>
                         <span
                           onClick={() => setCurrentFolderId(crumb.id)}
-                          className={idx === breadcrumbs.length - 1 ? styles.breadcrumbActive : styles.breadcrumbLink}
+                          onDragOver={(e) => handleDragOverTarget(e, crumb.id)}
+                          onDragLeave={handleDragLeaveTarget}
+                          onDrop={(e) => handleDropOnTarget(e, crumb.id, crumb.name)}
+                          className={`${idx === breadcrumbs.length - 1 ? styles.breadcrumbActive : styles.breadcrumbLink} ${activeDropTargetId === crumb.id ? styles.dropTarget : ''}`}
                         >
                           {crumb.name}
                         </span>
@@ -618,12 +743,18 @@ export default function DashboardPage() {
                         {filteredFolders.map((folder) => (
                           <div
                             key={folder.id}
+                            draggable
+                            onDragStart={(e) => handleDragStartItem(e, folder.id, 'folder', folder.name)}
+                            onDragEnd={handleDragEndItem}
+                            onDragOver={(e) => handleDragOverTarget(e, folder.id)}
+                            onDragLeave={handleDragLeaveTarget}
+                            onDrop={(e) => handleDropOnTarget(e, folder.id, folder.name)}
                             onDoubleClick={() => {
                               setCurrentFolderId(folder.id);
                               setSearchQuery('');
                               setSearchResults(null);
                             }}
-                            className={styles.folderCard}
+                            className={`${styles.folderCard} ${draggedItem?.id === folder.id ? styles.dragging : ''} ${activeDropTargetId === folder.id ? styles.dropTarget : ''}`}
                           >
                             <FolderIcon size={20} style={{ color: 'var(--primary)', flexShrink: 0 }} />
                             <span className={styles.folderName}>{folder.name}</span>
@@ -646,7 +777,13 @@ export default function DashboardPage() {
                       <h3 className={styles.sectionTitle}>Files</h3>
                       <div className={styles.fileList}>
                         {filteredFiles.map((file) => (
-                          <div key={file.id} className={styles.fileRow}>
+                          <div
+                            key={file.id}
+                            draggable
+                            onDragStart={(e) => handleDragStartItem(e, file.id, 'file', file.fileName)}
+                            onDragEnd={handleDragEndItem}
+                            className={`${styles.fileRow} ${draggedItem?.id === file.id ? styles.dragging : ''}`}
+                          >
                             <div className={styles.fileInfo}>
                               {getFileIcon(file.fileType)}
                               <span className={styles.fileName}>{file.fileName}</span>
@@ -878,36 +1015,68 @@ export default function DashboardPage() {
         {/* 4. Confirm Empty Trash Modal Overlay */}
         {showConfirmModal && (
           <div className={styles.modalOverlay}>
-            <div className={`glass-panel ${styles.modalContent}`} style={{ borderTop: '4px solid var(--danger)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <AlertCircle size={24} style={{ color: 'var(--danger)', flexShrink: 0 }} />
-                <h2 className={styles.modalTitle}>Empty Trash Bin?</h2>
+            <div className={`glass-panel ${styles.modalContent}`} style={{ textAlign: 'center', borderRadius: '16px', padding: '32px 28px' }}>
+              <div
+                style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  boxShadow: '0 0 24px rgba(239, 68, 68, 0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 16px auto',
+                }}
+              >
+                <Trash2 size={24} style={{ color: '#ef4444' }} />
               </div>
-              <p style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-                Are you sure you want to permanently empty the trash? All files and folders will be deleted permanently, and this action cannot be undone.
+
+              <h2 className={styles.modalTitle} style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 8px 0' }}>
+                Empty Trash?
+              </h2>
+
+              <p style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: '1.5', margin: '0 0 24px 0' }}>
+                Are you sure you want to permanently delete all items in the trash? This action cannot be undone.
               </p>
-              <div className={styles.modalButtons}>
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmModal(false)}
-                  className={styles.cancelBtn}
-                >
-                  Cancel
-                </button>
+
+              <div style={{ display: 'flex', gap: '12px' }}>
                 <button
                   type="button"
                   onClick={() => {
                     setShowConfirmModal(false);
                     confirmEmptyTrash();
                   }}
-                  className={styles.button}
+                  className={styles.fileInputLabel}
                   style={{
-                    width: 'auto',
-                    backgroundColor: 'var(--danger)',
-                    padding: '10px 20px',
+                    flex: 1,
+                    justifyContent: 'center',
+                    padding: '12px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    border: 'none',
+                    borderRadius: '8px',
+                    margin: 0,
                   }}
                 >
                   Empty Trash
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmModal(false)}
+                  className={styles.newFolderBtn}
+                  style={{
+                    flex: 1,
+                    justifyContent: 'center',
+                    padding: '12px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    borderRadius: '8px',
+                    margin: 0,
+                  }}
+                >
+                  Cancel
                 </button>
               </div>
             </div>
