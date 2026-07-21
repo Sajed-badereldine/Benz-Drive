@@ -146,13 +146,13 @@ export class FilesService {
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
       Key: s3Key,
-      ContentType: mimeType,
     });
 
     try {
       // Generate a signed PUT URL valid for 15 minutes (900 seconds)
       const uploadUrl = await getSignedUrl(this.s3Client, command, {
         expiresIn: 900,
+        signableHeaders: new Set(['host']),
       });
 
       return { uploadUrl, fileId };
