@@ -49,6 +49,20 @@ jobs:
             aws s3 rm "s3://$BUCKET_NAME" --recursive || true
           fi
 
+      - name: Ensure S3 State Bucket Exists
+        run: |
+          STATE_BUCKET="${{ secrets.TF_VAR_bucket_name }}-tfstate"
+          REGION="${{ secrets.AWS_REGION }}"
+          if ! aws s3api head-bucket --bucket "$STATE_BUCKET" 2>/dev/null; then
+            echo "Creating remote state bucket: $STATE_BUCKET..."
+            if [ "$REGION" = "us-east-1" ]; then
+              aws s3api create-bucket --bucket "$STATE_BUCKET" --region "$REGION"
+            else
+              aws s3api create-bucket --bucket "$STATE_BUCKET" --region "$REGION" --create-bucket-configuration LocationConstraint="$REGION"
+            fi
+            aws s3api put-bucket-versioning --bucket "$STATE_BUCKET" --versioning-configuration Status=Enabled
+          fi
+
       - name: Terraform Init
         working-directory: terraform
         run: |

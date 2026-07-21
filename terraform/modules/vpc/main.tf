@@ -4,10 +4,10 @@ variable "vpc_cidr" {
   description = "The CIDR block for the VPC"
 }
 
-variable "availability_zones" {
-  type        = list(string)
-  default     = ["us-east-1a", "us-east-1b"]
-  description = "The AZs to deploy subnets in"
+data "aws_region" "current" {}
+
+data "aws_availability_zones" "available" {
+  state = "available"
 }
 
 resource "aws_vpc" "main" {
@@ -30,10 +30,10 @@ resource "aws_internet_gateway" "igw" {
 
 # Public Subnets (for ALB)
 resource "aws_subnet" "public" {
-  count                   = length(var.availability_zones)
+  count                   = 2
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.${count.index}.0/24"
-  availability_zone       = var.availability_zones[count.index]
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
 
   tags = {
@@ -43,10 +43,10 @@ resource "aws_subnet" "public" {
 
 # Private Subnets (for Lambda/ECS)
 resource "aws_subnet" "private" {
-  count             = length(var.availability_zones)
+  count             = 2
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.${count.index + 10}.0/24"
-  availability_zone = var.availability_zones[count.index]
+  availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = {
     Name = "benzdrive-private-${count.index}"
@@ -68,7 +68,7 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table_association" "public" {
-  count          = length(var.availability_zones)
+  count          = 2
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
 }
@@ -76,7 +76,7 @@ resource "aws_route_table_association" "public" {
 # S3 Gateway Endpoint (Allows private resources to talk to S3 for free, without a NAT Gateway)
 resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.us-east-1.s3"
+  service_name      = "com.amazonaws.${data.aws_region.current.name}.s3"
   vpc_endpoint_type = "Gateway"
 
   route_table_ids = [
@@ -119,7 +119,7 @@ resource "aws_route_table" "private" {
 }
 
 resource "aws_route_table_association" "private" {
-  count          = length(var.availability_zones)
+  count          = 2
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private.id
 }
