@@ -114,6 +114,7 @@ jobs:
         run: |
           aws lambda update-function-code \
             --function-name benzdrive-backend \
+            --region ${{ secrets.AWS_REGION }} \
             --zip-file fileb://lambda.zip
 
   frontend-check:
