@@ -212,6 +212,7 @@ resource "aws_lambda_function" "backend" {
       DB_PASSWORD            = var.db_password
       DB_DATABASE            = var.db_name
       JWT_SECRET             = var.jwt_secret
+      JWT_EXPIRES_IN         = "7d"
       AWS_S3_BUCKET_NAME     = var.s3_bucket_name
       FRONTEND_URL           = var.allowed_origins[0]
       MAIL_HOST              = var.mail_host
@@ -231,14 +232,6 @@ resource "aws_lambda_function" "backend" {
 resource "aws_apigatewayv2_api" "http_api" {
   name          = "benzdrive-http-api"
   protocol_type = "HTTP"
-
-  cors_configuration {
-    allow_credentials = true
-    allow_headers     = ["*"]
-    allow_methods     = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    allow_origins     = var.allowed_origins
-    max_age           = 3600
-  }
 }
 
 # API Gateway Integration with Lambda

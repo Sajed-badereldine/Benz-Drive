@@ -37,8 +37,8 @@ class EnvironmentVariables {
     JWT_SECRET: string;
 
     @IsString()
-    @IsNotEmpty()
-    JWT_EXPIRES_IN: string;
+    @IsOptional()
+    JWT_EXPIRES_IN?: string;
 
     @IsString()
     @IsNotEmpty()
@@ -50,12 +50,12 @@ class EnvironmentVariables {
     MAIL_PORT: number;
 
     @IsString()
-    @IsNotEmpty()
-    MAIL_USER: string;
+    @IsOptional()
+    MAIL_USER?: string;
 
     @IsString()
-    @IsNotEmpty()
-    MAIL_PASSWORD: string;
+    @IsOptional()
+    MAIL_PASSWORD?: string;
 
     @IsString()
     @IsNotEmpty()
@@ -66,12 +66,12 @@ class EnvironmentVariables {
     AWS_REGION: string;
 
     @IsString()
-    @IsNotEmpty()
-    AWS_ACCESS_KEY_ID: string;
+    @IsOptional()
+    AWS_ACCESS_KEY_ID?: string;
 
     @IsString()
-    @IsNotEmpty()
-    AWS_SECRET_ACCESS_KEY: string;
+    @IsOptional()
+    AWS_SECRET_ACCESS_KEY?: string;
 
     @IsString()
     @IsNotEmpty()
