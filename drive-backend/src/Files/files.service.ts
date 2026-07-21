@@ -128,7 +128,8 @@ export class FilesService {
     }
 
     const fileId = crypto.randomUUID();
-    const s3Key = `${userId}/${fileId}-${fileName}`;
+    const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const s3Key = `${userId}/${fileId}-${safeFileName}`;
 
     // Create a pending file metadata record in DB
     const fileMetadata = this.filesRepository.create({
@@ -148,14 +149,13 @@ export class FilesService {
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
       Key: s3Key,
+      ContentType: mimeType,
     });
 
     try {
       // Generate a signed PUT URL valid for 15 minutes (900 seconds)
       const uploadUrl = await getSignedUrl(this.s3Client, command, {
         expiresIn: 900,
-        signableHeaders: new Set(['host']),
-        unhoistableHeaders: new Set(['x-amz-checksum-crc32', 'x-amz-sdk-checksum-algorithm']),
       });
 
       return { uploadUrl, fileId };
