@@ -35,6 +35,9 @@ import { MailModule } from './mail/mail.module';
         database: configService.get<string>('database.database'),
         autoLoadEntities: true,
         synchronize: true,
+        ssl: process.env.NODE_ENV === 'production' || process.env.DB_HOST?.includes('rds.amazonaws.com')
+          ? { rejectUnauthorized: false }
+          : false,
       }),
     }),
     ThrottlerModule.forRoot([
