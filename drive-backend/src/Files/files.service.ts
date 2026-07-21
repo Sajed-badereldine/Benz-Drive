@@ -29,6 +29,8 @@ export class FilesService {
 
     const s3Config: any = {
       region: this.configService.get<string>('aws.region') || 'eu-central-1',
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
     };
 
     if (accessKeyId && secretAccessKey) {
@@ -153,6 +155,7 @@ export class FilesService {
       const uploadUrl = await getSignedUrl(this.s3Client, command, {
         expiresIn: 900,
         signableHeaders: new Set(['host']),
+        unhoistableHeaders: new Set(['x-amz-checksum-crc32', 'x-amz-sdk-checksum-algorithm']),
       });
 
       return { uploadUrl, fileId };
