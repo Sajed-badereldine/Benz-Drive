@@ -260,9 +260,6 @@ export default function DashboardPage() {
       // 2. Upload file binary directly to S3 (bypassing backend)
       const s3Response = await fetch(presignedData.uploadUrl, {
         method: 'PUT',
-        headers: {
-          'Content-Type': file.type || 'application/octet-stream',
-        },
         body: file,
       });
 

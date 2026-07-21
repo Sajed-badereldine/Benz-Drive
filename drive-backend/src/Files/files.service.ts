@@ -149,7 +149,6 @@ export class FilesService {
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
       Key: s3Key,
-      ContentType: mimeType,
     });
 
     try {
