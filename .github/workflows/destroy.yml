@@ -1,0 +1,60 @@
+name: BenzDrive Destroy Infrastructure
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform-destroy:
+    name: Destroy All AWS Infrastructure
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+      TF_VAR_bucket_name: ${{ secrets.TF_VAR_bucket_name }}
+      TF_VAR_db_password: ${{ secrets.TF_VAR_db_password }}
+      TF_VAR_jwt_secret: ${{ secrets.TF_VAR_jwt_secret }}
+      TF_VAR_allowed_origins: ${{ secrets.TF_VAR_allowed_origins }}
+      TF_VAR_mail_host: ${{ secrets.TF_VAR_mail_host }}
+      TF_VAR_mail_port: ${{ secrets.TF_VAR_mail_port }}
+      TF_VAR_mail_user: ${{ secrets.TF_VAR_mail_user }}
+      TF_VAR_mail_password: ${{ secrets.TF_VAR_mail_password }}
+      TF_VAR_mail_from: ${{ secrets.TF_VAR_mail_from }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Empty S3 Storage Bucket (if exists)
+        run: |
+          BUCKET_NAME="${{ secrets.TF_VAR_bucket_name }}"
+          if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
+            echo "Emptying S3 storage bucket $BUCKET_NAME prior to destroy..."
+            aws s3 rm "s3://$BUCKET_NAME" --recursive || true
+          fi
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_VAR_bucket_name }}-tfstate" \
+            -backend-config="key=terraform.tfstate" \
+            -backend-config="region=${{ secrets.AWS_REGION }}"
+
+      - name: Terraform Destroy
+        working-directory: terraform
+        run: terraform destroy -auto-approve

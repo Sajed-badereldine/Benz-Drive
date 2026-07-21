@@ -6,6 +6,7 @@ import { Folder } from './entities/folder.entity';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -85,10 +86,97 @@ export class FilesService {
     }
   }
 
+  // 1.5 Generate S3 Presigned URL for Direct File Upload
+  async getPresignedUploadUrl(
+    userId: string,
+    fileName: string,
+    fileSize: number,
+    mimeType: string,
+    folderId: string | null = null,
+  ): Promise<{ uploadUrl: string; fileId: string }> {
+    const quotaBytes = 500 * 1024 * 1024; // 500 MB
+
+    // Calculate current usage (sum sizeBytes of non-trashed active files)
+    const usageResult = await this.filesRepository
+      .createQueryBuilder('file')
+      .select('SUM(file.sizeBytes)', 'sum')
+      .where('file.userId = :userId', { userId })
+      .andWhere('file.isTrashed = false')
+      .andWhere('file.uploadStatus = :status', { status: UploadStatus.ACTIVE })
+      .getRawOne();
+
+    const currentUsage = parseInt(usageResult.sum || '0', 10);
+
+    if (currentUsage + fileSize > quotaBytes) {
+      throw new BadRequestException(
+        'You have exceeded your total storage limit of 500 MB. Please empty your trash or delete some files to free up space.',
+      );
+    }
+
+    const fileId = crypto.randomUUID();
+    const s3Key = `${userId}/${fileId}-${fileName}`;
+
+    // Create a pending file metadata record in DB
+    const fileMetadata = this.filesRepository.create({
+      id: fileId,
+      fileName: fileName,
+      s3Key: s3Key,
+      userId: userId,
+      folderId: folderId,
+      sizeBytes: fileSize,
+      fileType: this.getFileType(mimeType),
+      uploadStatus: UploadStatus.PENDING,
+    });
+
+    await this.filesRepository.save(fileMetadata);
+
+    // Prepare S3 PutObjectCommand to generate signed URL
+    const command = new PutObjectCommand({
+      Bucket: this.bucketName,
+      Key: s3Key,
+      ContentType: mimeType,
+    });
+
+    try {
+      // Generate a signed PUT URL valid for 15 minutes (900 seconds)
+      const uploadUrl = await getSignedUrl(this.s3Client, command, {
+        expiresIn: 900,
+      });
+
+      return { uploadUrl, fileId };
+    } catch (error) {
+      console.error('Failed to generate S3 Presigned URL:', error);
+      // Clean up the created pending record on generation failure
+      await this.filesRepository.delete(fileId);
+      throw new BadRequestException('Failed to generate secure upload link');
+    }
+  }
+
+  // 1.6 Confirm direct file upload completion
+  async confirmUpload(fileId: string, userId: string): Promise<Files> {
+    const file = await this.filesRepository.findOne({ where: { id: fileId } });
+
+    if (!file) {
+      throw new NotFoundException('File upload record not found');
+    }
+
+    if (file.userId !== userId) {
+      throw new ForbiddenException('You do not have permission to access this file');
+    }
+
+    if (file.uploadStatus !== UploadStatus.PENDING) {
+      throw new BadRequestException('File is not in a pending upload state');
+    }
+
+    // Mark upload status as ACTIVE
+    file.uploadStatus = UploadStatus.ACTIVE;
+    return await this.filesRepository.save(file);
+  }
+
   // 2. List all files belonging to a specific user
   async listUserFiles(userId: string): Promise<Files[]> {
     return this.filesRepository.find({
-      where: { userId, isTrashed: false },
+      where: { userId, isTrashed: false, uploadStatus: UploadStatus.ACTIVE },
       order: { createdAt: 'DESC' },
     });
   }
@@ -210,6 +298,7 @@ export class FilesService {
         userId,
         folderId: isRoot ? IsNull() : folderId,
         isTrashed: false,
+        uploadStatus: UploadStatus.ACTIVE,
       },
       order: { createdAt: 'DESC' },
     });
@@ -475,6 +564,7 @@ export class FilesService {
         userId,
         fileName: ILike(`%${query}%`),
         isTrashed: false,
+        uploadStatus: UploadStatus.ACTIVE,
       },
       order: { fileName: 'ASC' },
     });

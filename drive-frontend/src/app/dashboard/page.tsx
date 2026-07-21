@@ -231,24 +231,50 @@ export default function DashboardPage() {
     
     const file = filesToUpload[0];
     
-    // Quick size validation
+    // Quick size validation against 50MB max file size
     if (file.size > 50 * 1024 * 1024) {
       showToast('File size exceeds the maximum limit of 50 MB. Please choose a smaller file.', 'error');
       return;
     }
 
-    setLoading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    if (currentFolderId && currentFolderId !== 'root') {
-      formData.append('folderId', currentFolderId);
+    // Local quota check
+    if (storageUsed + file.size > quotaBytes) {
+      showToast('Not enough space. Please free up some space.', 'error');
+      return;
     }
 
+    setLoading(true);
+
     try {
-      await apiFetch('/files/upload', {
+      // 1. Get presigned upload URL and fileId from backend
+      const presignedData = await apiFetch('/files/presigned-upload', {
         method: 'POST',
-        bodyData: formData,
+        bodyData: {
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type || 'application/octet-stream',
+          folderId: currentFolderId === 'root' ? null : currentFolderId,
+        },
       });
+
+      // 2. Upload file binary directly to S3 (bypassing backend)
+      const s3Response = await fetch(presignedData.uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+        },
+        body: file,
+      });
+
+      if (!s3Response.ok) {
+        throw new Error(`S3 upload failed: ${s3Response.statusText}`);
+      }
+
+      // 3. Confirm upload with the backend
+      await apiFetch(`/files/confirm-upload/${presignedData.fileId}`, {
+        method: 'POST',
+      });
+
       showToast('File successfully uploaded!', 'success');
       fetchFolderContents();
       fetchQuotaUsage();

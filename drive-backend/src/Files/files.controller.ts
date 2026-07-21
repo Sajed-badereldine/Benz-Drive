@@ -32,6 +32,33 @@ export class FilesController {
     return this.filesService.uploadFile(file, req.user.id, folderId || null);
   }
 
+  // 1.5 Get Presigned Upload URL (POST /files/presigned-upload)
+  @Post('presigned-upload')
+  async getPresignedUploadUrl(
+    @Req() req: any,
+    @Body('fileName') fileName: string,
+    @Body('fileSize') fileSize: number,
+    @Body('mimeType') mimeType: string,
+    @Body('folderId') folderId?: string,
+  ) {
+    return this.filesService.getPresignedUploadUrl(
+      req.user.id,
+      fileName,
+      fileSize,
+      mimeType,
+      folderId || null,
+    );
+  }
+
+  // 1.6 Confirm File Upload (POST /files/confirm-upload/:id)
+  @Post('confirm-upload/:id')
+  async confirmUpload(
+    @Param('id') id: string,
+    @Req() req: any,
+  ) {
+    return this.filesService.confirmUpload(id, req.user.id);
+  }
+
   // 2. List Files (GET /files)
   @Get()
   async listFiles(@Req() req: any) {

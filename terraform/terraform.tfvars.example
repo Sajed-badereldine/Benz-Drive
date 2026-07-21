@@ -1,0 +1,21 @@
+# AWS region to deploy the resources
+aws_region = "us-east-1"
+
+# A unique name for your S3 bucket (must be globally unique across all AWS accounts)
+bucket_name = "benzdrive-storage-unique-suffix"
+
+# Master password for the RDS PostgreSQL database
+db_password = "choose-a-strong-database-password"
+
+# Encryption secret key used for signing NestJS JWT tokens
+jwt_secret = "generate-a-secure-random-jwt-key"
+
+# URL of your frontend Next.js application (used for CORS and backend allowed origins)
+allowed_origins = ["http://localhost:5233"]
+
+# SMTP server settings for NestJS notifications
+mail_host     = "smtp.mailtrap.io"
+mail_port     = "2525"
+mail_user     = "your-smtp-username"
+mail_password = "your-smtp-password-optional"
+mail_from     = "no-reply@benzdrive.com"
