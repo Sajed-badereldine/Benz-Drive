@@ -23,15 +23,27 @@ export class FilesService {
   ) {
     this.bucketName = this.configService.get<string>('aws.bucketName')!;
 
-    this.s3Client = new S3Client({
-      region: this.configService.get<string>('aws.region'),
-      credentials: {
-        accessKeyId: this.configService.get<string>('aws.accessKeyId')!,
-        secretAccessKey: this.configService.get<string>('aws.secretAccessKey')!,
-      },
-      endpoint: this.configService.get<string>('aws.endpoint'),
-      forcePathStyle: true,
-    });
+    const accessKeyId = this.configService.get<string>('aws.accessKeyId');
+    const secretAccessKey = this.configService.get<string>('aws.secretAccessKey');
+    const endpoint = this.configService.get<string>('aws.endpoint');
+
+    const s3Config: any = {
+      region: this.configService.get<string>('aws.region') || 'eu-central-1',
+    };
+
+    if (accessKeyId && secretAccessKey) {
+      s3Config.credentials = {
+        accessKeyId,
+        secretAccessKey,
+      };
+    }
+
+    if (endpoint) {
+      s3Config.endpoint = endpoint;
+      s3Config.forcePathStyle = true;
+    }
+
+    this.s3Client = new S3Client(s3Config);
   }
 
   // 1. Upload file to S3 and save metadata in DB
