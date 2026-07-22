@@ -49,22 +49,27 @@ export class FilesService {
     this.s3Client = new S3Client(s3Config);
   }
 
-  // 1. Upload file to S3 and save metadata in DB
-  async uploadFile(file: Express.Multer.File, userId: string, folderId: string | null = null): Promise<Files> {
-    // Enforce 500 MB total user storage quota
-    const quotaBytes = 500 * 1024 * 1024; // 500 MB
+  // Helper to calculate total user storage usage (includes active & trashed files)
+  async getUserStorageUsage(userId: string): Promise<{ usedBytes: number; quotaBytes: number }> {
+    const quotaBytes = 500 * 1024 * 1024; // 500 MB quota limit
 
-    // Calculate current usage (sum sizeBytes of non-trashed files)
     const usageResult = await this.filesRepository
       .createQueryBuilder('file')
       .select('SUM(file.sizeBytes)', 'sum')
       .where('file.userId = :userId', { userId })
-      .andWhere('file.isTrashed = false')
+      .andWhere('file.uploadStatus = :status', { status: UploadStatus.ACTIVE })
       .getRawOne();
 
-    const currentUsage = parseInt(usageResult.sum || '0', 10);
+    const usedBytes = parseInt(usageResult?.sum || '0', 10);
+    return { usedBytes, quotaBytes };
+  }
 
-    if (currentUsage + file.size > quotaBytes) {
+  // 1. Upload file to S3 and save metadata in DB
+  async uploadFile(file: Express.Multer.File, userId: string, folderId: string | null = null): Promise<Files> {
+    // Enforce 500 MB total user storage quota (includes active & trashed files)
+    const { usedBytes, quotaBytes } = await this.getUserStorageUsage(userId);
+
+    if (usedBytes + file.size > quotaBytes) {
       throw new BadRequestException('You have exceeded your total storage limit of 500 MB. Please empty your trash or delete some files to free up space.');
     }
 
@@ -109,20 +114,10 @@ export class FilesService {
     mimeType: string,
     folderId: string | null = null,
   ): Promise<{ uploadUrl: string; fileId: string }> {
-    const quotaBytes = 500 * 1024 * 1024; // 500 MB
+    // Enforce 500 MB total user storage quota (includes active & trashed files)
+    const { usedBytes, quotaBytes } = await this.getUserStorageUsage(userId);
 
-    // Calculate current usage (sum sizeBytes of non-trashed active files)
-    const usageResult = await this.filesRepository
-      .createQueryBuilder('file')
-      .select('SUM(file.sizeBytes)', 'sum')
-      .where('file.userId = :userId', { userId })
-      .andWhere('file.isTrashed = false')
-      .andWhere('file.uploadStatus = :status', { status: UploadStatus.ACTIVE })
-      .getRawOne();
-
-    const currentUsage = parseInt(usageResult.sum || '0', 10);
-
-    if (currentUsage + fileSize > quotaBytes) {
+    if (usedBytes + fileSize > quotaBytes) {
       throw new BadRequestException(
         'You have exceeded your total storage limit of 500 MB. Please empty your trash or delete some files to free up space.',
       );

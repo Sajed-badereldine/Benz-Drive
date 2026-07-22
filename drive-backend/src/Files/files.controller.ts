@@ -74,6 +74,12 @@ export class FilesController {
     return this.filesService.searchItems(query || '', req.user.id);
   }
 
+  // 2.6 Get Total Storage Usage (GET /files/storage/usage)
+  @Get('storage/usage')
+  async getStorageUsage(@Req() req: any) {
+    return this.filesService.getUserStorageUsage(req.user.id);
+  }
+
   // 3. Download/Stream File (GET /files/download/:id)
   @Get('download/:id')
   async downloadFile(

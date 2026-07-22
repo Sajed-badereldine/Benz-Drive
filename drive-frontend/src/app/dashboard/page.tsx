@@ -188,12 +188,11 @@ export default function DashboardPage() {
     }
   };
 
-  // Fetch active quota usage (sums all non-trashed files)
+  // Fetch total quota usage (includes active and trashed files)
   const fetchQuotaUsage = async () => {
     try {
-      const allFiles = await apiFetch('/files');
-      const totalSize = allFiles.reduce((acc: number, f: FileItem) => acc + f.sizeBytes, 0);
-      setStorageUsed(totalSize);
+      const data = await apiFetch('/files/storage/usage');
+      setStorageUsed(data.usedBytes);
     } catch (err) {
       console.error('Error calculating quota usage:', err);
     }
@@ -457,6 +456,7 @@ export default function DashboardPage() {
       await apiFetch('/files/trash/empty', { method: 'DELETE' });
       showToast('Trash permanently cleared.', 'success');
       fetchTrashedItems();
+      fetchQuotaUsage();
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
