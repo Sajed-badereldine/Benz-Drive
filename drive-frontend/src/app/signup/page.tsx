@@ -19,12 +19,18 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [registered, setRegistered] = useState(false);
 
-  // Redirect to dashboard if already logged in
+  // Redirect to dashboard if already logged in via HttpOnly cookie
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      router.push('/dashboard');
-    }
+    localStorage.removeItem('token');
+    apiFetch('/auth/me')
+      .then((user) => {
+        if (user && user.id) {
+          router.push('/dashboard');
+        }
+      })
+      .catch(() => {
+        // Not logged in
+      });
   }, [router]);
 
   const handleSignUp = async (e: React.FormEvent) => {

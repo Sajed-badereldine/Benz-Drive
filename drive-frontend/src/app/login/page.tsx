@@ -24,12 +24,19 @@ export default function LoginPage() {
 
   const [loading, setLoading] = useState(false);
 
-  // Redirect to dashboard if already logged in
+  // Redirect to dashboard if already logged in via HttpOnly cookie
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      router.push('/dashboard');
-    }
+    localStorage.removeItem('token');
+    apiFetch('/auth/me')
+      .then((user) => {
+        if (user && user.id) {
+          localStorage.setItem('user', JSON.stringify(user));
+          router.push('/dashboard');
+        }
+      })
+      .catch(() => {
+        // Not authenticated, stay on login page
+      });
   }, [router]);
 
   // Handle standard password sign-in
@@ -50,8 +57,8 @@ export default function LoginPage() {
       if (response.requires2FA) {
         setRequires2FA(true);
         showToast(response.message || 'Two-factor code sent to your email.', 'success');
-      } else if (response.data?.token) {
-        localStorage.setItem('token', response.data.token);
+      } else if (response.data?.user) {
+        localStorage.removeItem('token');
         localStorage.setItem('user', JSON.stringify(response.data.user));
         showToast(response.message || 'Successfully signed in!', 'success');
         router.push('/dashboard');
@@ -100,8 +107,8 @@ export default function LoginPage() {
         bodyData: { email, code },
       });
 
-      if (response.data?.token) {
-        localStorage.setItem('token', response.data.token);
+      if (response.data?.user) {
+        localStorage.removeItem('token');
         localStorage.setItem('user', JSON.stringify(response.data.user));
         showToast('Successfully signed in!', 'success');
         router.push('/dashboard');

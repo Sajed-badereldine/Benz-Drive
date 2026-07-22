@@ -8,14 +8,6 @@ export async function apiFetch(path: string, options: FetchOptions = {}) {
   const url = `${BASE_URL}${path.startsWith('/') ? path : '/' + path}`;
   
   const headers = new Headers(options.headers || {});
-  
-  // Retrieve token from LocalStorage if executing in the browser
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('token');
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`);
-    }
-  }
 
   // Set Content-Type automatically for JSON body payloads
   let body = options.body;
