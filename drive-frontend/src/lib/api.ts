@@ -30,6 +30,7 @@ export async function apiFetch(path: string, options: FetchOptions = {}) {
   }
 
   const finalOptions: RequestInit = {
+    credentials: 'include',
     ...options,
     headers,
     body,

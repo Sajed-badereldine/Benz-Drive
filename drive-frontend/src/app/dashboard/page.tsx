@@ -96,23 +96,30 @@ export default function DashboardPage() {
   const [draggedItem, setDraggedItem] = useState<{ id: string; type: 'file' | 'folder'; name: string } | null>(null);
   const [activeDropTargetId, setActiveDropTargetId] = useState<string | null>(null);
 
-  // Authenticate user on mount
+  // Authenticate user on mount via HttpOnly Cookie (or localStorage fallback)
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
+    const verifySession = async () => {
+      try {
+        const user = await apiFetch('/auth/me');
+        setCurrentUser(user);
+        localStorage.setItem('user', JSON.stringify(user));
+      } catch {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          try {
+            setCurrentUser(JSON.parse(userStr));
+            return;
+          } catch {
+            // fallthrough
+          }
+        }
+        localStorage.clear();
+        showToast('Please sign in to access your drive.', 'error');
+        router.push('/login');
+      }
+    };
 
-    if (!token || !userStr) {
-      showToast('Please sign in to access your drive.', 'error');
-      router.push('/login');
-      return;
-    }
-
-    try {
-      setCurrentUser(JSON.parse(userStr));
-    } catch {
-      localStorage.clear();
-      router.push('/login');
-    }
+    verifySession();
   }, [router, showToast]);
 
   // Load drive contents or trash depending on active state
@@ -582,10 +589,16 @@ export default function DashboardPage() {
   };
 
   // Log Out
-  const handleLogout = () => {
-    localStorage.clear();
-    showToast('Signed out successfully.', 'success');
-    router.push('/login');
+  const handleLogout = async () => {
+    try {
+      await apiFetch('/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      localStorage.clear();
+      showToast('Signed out successfully.', 'success');
+      router.push('/login');
+    }
   };
 
   // Drag and Drop item re-parenting handlers
