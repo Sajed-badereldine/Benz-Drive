@@ -278,6 +278,45 @@ export class FilesService {
     return await this.folderRepository.save(folder);
   }
 
+  // 6.5 Ensure Nested Folder Tree (Recursively creates or gets folder IDs for path segments)
+  async ensureFolderTree(
+    pathSegments: string[],
+    startParentId: string | null,
+    userId: string,
+  ): Promise<{ folderId: string | null }> {
+    let currentParentId: string | null = !startParentId || startParentId === 'root' ? null : startParentId;
+
+    for (const segment of pathSegments) {
+      if (!segment || !segment.trim()) continue;
+
+      const cleanSegment = segment.trim();
+
+      // Check if non-trashed folder already exists under currentParentId
+      let folder = await this.folderRepository.findOne({
+        where: {
+          name: cleanSegment,
+          userId,
+          parentFolderId: currentParentId === null ? IsNull() : currentParentId,
+          isTrashed: false,
+        },
+      });
+
+      // If it doesn't exist, create it
+      if (!folder) {
+        folder = this.folderRepository.create({
+          name: cleanSegment,
+          userId,
+          parentFolderId: currentParentId,
+        });
+        folder = await this.folderRepository.save(folder);
+      }
+
+      currentParentId = folder.id;
+    }
+
+    return { folderId: currentParentId };
+  }
+
   // 7. Get Folder Contents (Unified listing for files & subfolders)
   async getFolderContents(folderId: string | null, userId: string) {
     let currentFolder: Folder | null = null;

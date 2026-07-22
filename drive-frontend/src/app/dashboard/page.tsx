@@ -49,6 +49,11 @@ interface User {
   isTwoFactorEnabled: boolean;
 }
 
+interface BatchFileEntry {
+  file: File;
+  relativePath: string;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -84,6 +89,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0);
 
   // Drag and Drop re-parenting states
@@ -224,39 +230,24 @@ export default function DashboardPage() {
     }
   };
 
-  // Handle file upload trigger
-  const handleFileUpload = async (filesToUpload: FileList | null) => {
-    if (!filesToUpload || filesToUpload.length === 0) return;
-    
-    const file = filesToUpload[0];
-    
-    // Quick size validation against 50MB max file size
+  // Upload single file binary helper
+  const uploadSingleFileBinary = async (file: File, targetFolderId: string | null): Promise<boolean> => {
     if (file.size > 50 * 1024 * 1024) {
-      showToast('File size exceeds the maximum limit of 50 MB. Please choose a smaller file.', 'error');
-      return;
+      showToast(`File "${file.name}" exceeds 50 MB size limit. Skipped.`, 'error');
+      return false;
     }
-
-    // Local quota check
-    if (storageUsed + file.size > quotaBytes) {
-      showToast('Not enough space. Please free up some space.', 'error');
-      return;
-    }
-
-    setLoading(true);
 
     try {
-      // 1. Get presigned upload URL and fileId from backend
       const presignedData = await apiFetch('/files/presigned-upload', {
         method: 'POST',
         bodyData: {
           fileName: file.name,
           fileSize: file.size,
           mimeType: file.type || 'application/octet-stream',
-          folderId: currentFolderId === 'root' ? null : currentFolderId,
+          folderId: !targetFolderId || targetFolderId === 'root' ? null : targetFolderId,
         },
       });
 
-      // 2. Upload file binary directly to S3 (bypassing backend)
       const s3Response = await fetch(presignedData.uploadUrl, {
         method: 'PUT',
         body: file,
@@ -266,19 +257,118 @@ export default function DashboardPage() {
         throw new Error(`S3 upload failed: ${s3Response.statusText}`);
       }
 
-      // 3. Confirm upload with the backend
       await apiFetch(`/files/confirm-upload/${presignedData.fileId}`, {
         method: 'POST',
       });
 
-      showToast('File successfully uploaded!', 'success');
-      fetchFolderContents();
-      fetchQuotaUsage();
+      return true;
     } catch (err: any) {
-      showToast(err.message, 'error');
-    } finally {
-      setLoading(false);
+      console.error(`Upload error for ${file.name}:`, err);
+      showToast(err.message || `Failed to upload ${file.name}`, 'error');
+      return false;
     }
+  };
+
+  // Upload batch of files while maintaining folder hierarchy
+  const uploadBatchFilesWithStructure = async (entries: BatchFileEntry[], baseFolderId: string | null) => {
+    if (entries.length === 0) return;
+
+    setLoading(true);
+    showToast(`Starting upload of ${entries.length} item(s)...`, 'info');
+
+    const folderPathCache = new Map<string, string | null>();
+    let successCount = 0;
+
+    for (let i = 0; i < entries.length; i++) {
+      const { file, relativePath } = entries[i];
+      const normalizedPath = relativePath.replace(/\\/g, '/');
+      const pathParts = normalizedPath.split('/').filter(p => p.trim() !== '');
+      const folderSegments = pathParts.slice(0, -1);
+
+      let destFolderId: string | null = !baseFolderId || baseFolderId === 'root' ? null : baseFolderId;
+
+      if (folderSegments.length > 0) {
+        const cacheKey = folderSegments.join('/');
+        if (folderPathCache.has(cacheKey)) {
+          destFolderId = folderPathCache.get(cacheKey)!;
+        } else {
+          try {
+            const res = await apiFetch('/files/folders/ensure-path', {
+              method: 'POST',
+              bodyData: {
+                path: folderSegments,
+                parentFolderId: destFolderId,
+              },
+            });
+            destFolderId = res.folderId;
+            folderPathCache.set(cacheKey, destFolderId);
+          } catch (err) {
+            console.error('Error creating nested folder hierarchy:', err);
+          }
+        }
+      }
+
+      const ok = await uploadSingleFileBinary(file, destFolderId);
+      if (ok) successCount++;
+    }
+
+    setLoading(false);
+    showToast(`Upload complete: ${successCount} of ${entries.length} file(s) saved!`, 'success');
+    fetchFolderContents();
+    fetchQuotaUsage();
+  };
+
+  // Handle file upload trigger
+  const handleFileUpload = async (filesToUpload: FileList | null) => {
+    if (!filesToUpload || filesToUpload.length === 0) return;
+    const entries: BatchFileEntry[] = Array.from(filesToUpload).map(file => ({
+      file,
+      relativePath: file.name,
+    }));
+    await uploadBatchFilesWithStructure(entries, currentFolderId);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Handle folder upload from input picker (webkitdirectory)
+  const handleFolderInputChange = async (filesToUpload: FileList | null) => {
+    if (!filesToUpload || filesToUpload.length === 0) return;
+    const entries: BatchFileEntry[] = Array.from(filesToUpload).map(file => ({
+      file,
+      relativePath: (file as any).webkitRelativePath || file.name,
+    }));
+    await uploadBatchFilesWithStructure(entries, currentFolderId);
+    if (folderInputRef.current) folderInputRef.current.value = '';
+  };
+
+  // Helper to scan directory entries recursively during drag-and-drop
+  const scanDirectoryEntry = async (entry: any, path: string = ''): Promise<BatchFileEntry[]> => {
+    const results: BatchFileEntry[] = [];
+    if (entry.isFile) {
+      return new Promise((resolve) => {
+        entry.file((file: File) => {
+          results.push({ file, relativePath: path + file.name });
+          resolve(results);
+        }, () => resolve(results));
+      });
+    } else if (entry.isDirectory) {
+      const dirReader = entry.createReader();
+      const readEntries = async (): Promise<any[]> => {
+        let entriesList: any[] = [];
+        let read = await new Promise<any[]>((res) => dirReader.readEntries(res, () => res([])));
+        while (read.length > 0) {
+          entriesList = entriesList.concat(read);
+          read = await new Promise<any[]>((res) => dirReader.readEntries(res, () => res([])));
+        }
+        return entriesList;
+      };
+
+      const childEntries = await readEntries();
+      for (const child of childEntries) {
+        const childResults = await scanDirectoryEntry(child, path + entry.name + '/');
+        results.push(...childResults);
+      }
+    }
+    return results;
   };
 
   // External File Upload Drag & Drop handlers (from Desktop OS)
@@ -320,7 +410,7 @@ export default function DashboardPage() {
     }
   };
 
-  const handleExternalDrop = (e: React.DragEvent) => {
+  const handleExternalDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     dragCounter.current = 0;
@@ -328,8 +418,35 @@ export default function DashboardPage() {
 
     if (draggedItem) return;
 
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileUpload(e.dataTransfer.files);
+    const items = e.dataTransfer.items;
+    if (items && items.length > 0) {
+      const batchEntries: BatchFileEntry[] = [];
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind === 'file') {
+          const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+          if (entry) {
+            const scanned = await scanDirectoryEntry(entry, '');
+            batchEntries.push(...scanned);
+          } else {
+            const file = item.getAsFile();
+            if (file) {
+              batchEntries.push({ file, relativePath: file.name });
+            }
+          }
+        }
+      }
+
+      if (batchEntries.length > 0) {
+        uploadBatchFilesWithStructure(batchEntries, currentFolderId);
+      }
+    } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const batchEntries: BatchFileEntry[] = Array.from(e.dataTransfer.files).map(file => ({
+        file,
+        relativePath: (file as any).webkitRelativePath || file.name,
+      }));
+      uploadBatchFilesWithStructure(batchEntries, currentFolderId);
     }
   };
 
@@ -737,7 +854,21 @@ export default function DashboardPage() {
                     <input
                       type="file"
                       ref={fileInputRef}
+                      multiple
                       onChange={(e) => handleFileUpload(e.target.files)}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+
+                  <label className={styles.fileInputLabel}>
+                    <FolderIcon size={16} />
+                    <span>Upload Folder</span>
+                    <input
+                      type="file"
+                      ref={folderInputRef}
+                      {...({ webkitdirectory: '', directory: '' } as any)}
+                      multiple
+                      onChange={(e) => handleFolderInputChange(e.target.files)}
                       style={{ display: 'none' }}
                     />
                   </label>

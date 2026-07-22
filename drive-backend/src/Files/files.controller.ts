@@ -117,6 +117,16 @@ export class FilesController {
     return this.filesService.createFolder(createFolderDto, req.user.id);
   }
 
+  // 5.5 Ensure Folder Path (POST /files/folders/ensure-path)
+  @Post('folders/ensure-path')
+  async ensureFolderPath(
+    @Body('path') path: string[],
+    @Body('parentFolderId') parentFolderId: string | undefined,
+    @Req() req: any,
+  ) {
+    return this.filesService.ensureFolderTree(path || [], parentFolderId || null, req.user.id);
+  }
+
   // 6. Get Folder Contents - Root (GET /files/folders/content)
   @Get('folders/content')
   async getRootFolderContents(@Req() req: any) {
