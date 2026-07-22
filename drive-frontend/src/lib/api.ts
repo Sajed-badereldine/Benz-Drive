@@ -9,6 +9,14 @@ export async function apiFetch(path: string, options: FetchOptions = {}) {
   
   const headers = new Headers(options.headers || {});
 
+  // Retrieve token fallback from LocalStorage if available
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('token');
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+  }
+
   // Set Content-Type automatically for JSON body payloads
   let body = options.body;
   if (options.bodyData) {
@@ -42,6 +50,11 @@ export async function apiFetch(path: string, options: FetchOptions = {}) {
     const data = await response.json().catch(() => null);
 
     if (!response.ok) {
+      if (response.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/signup')) {
+        localStorage.clear();
+        window.location.href = '/login';
+      }
+
       // Parse custom error message from backend
       // (Class validator yields arrays of errors, which we join into a friendly string)
       const errorMessage = data?.message 

@@ -58,7 +58,9 @@ export default function LoginPage() {
         setRequires2FA(true);
         showToast(response.message || 'Two-factor code sent to your email.', 'success');
       } else if (response.data?.user) {
-        localStorage.removeItem('token');
+        if (response.data.token) {
+          localStorage.setItem('token', response.data.token);
+        }
         localStorage.setItem('user', JSON.stringify(response.data.user));
         showToast(response.message || 'Successfully signed in!', 'success');
         router.push('/dashboard');
@@ -108,7 +110,9 @@ export default function LoginPage() {
       });
 
       if (response.data?.user) {
-        localStorage.removeItem('token');
+        if (response.data.token) {
+          localStorage.setItem('token', response.data.token);
+        }
         localStorage.setItem('user', JSON.stringify(response.data.user));
         showToast('Successfully signed in!', 'success');
         router.push('/dashboard');

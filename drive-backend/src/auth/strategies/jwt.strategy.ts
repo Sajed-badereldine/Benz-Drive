@@ -12,7 +12,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     ) {
         super({
             jwtFromRequest: ExtractJwt.fromExtractors([
-                (req: any) => req?.cookies?.Authentication || req?.cookies?.token || null,
+                (req: any) => {
+                    if (req?.cookies?.Authentication) return req.cookies.Authentication;
+                    if (req?.cookies?.token) return req.cookies.token;
+                    // Parse raw cookie header for AWS Lambda Serverless Express
+                    const cookieHeader = req?.headers?.cookie || req?.headers?.Cookie;
+                    if (cookieHeader) {
+                        const match = cookieHeader.match(/(?:^|;\s*)(?:Authentication|token)=([^;]+)/);
+                        if (match) return decodeURIComponent(match[1]);
+                    }
+                    return null;
+                },
                 ExtractJwt.fromAuthHeaderAsBearerToken(),
             ]),
             ignoreExpiration: false,
