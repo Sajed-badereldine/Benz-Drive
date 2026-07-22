@@ -106,8 +106,20 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie('Authentication', { path: '/' });
-    res.clearCookie('token', { path: '/' });
+    res.cookie('Authentication', '', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      expires: new Date(0),
+      path: '/',
+    });
+    res.cookie('token', '', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      expires: new Date(0),
+      path: '/',
+    });
     return { message: 'Signed out successfully' };
   }
 }

@@ -597,7 +597,7 @@ export default function DashboardPage() {
     } finally {
       localStorage.clear();
       showToast('Signed out successfully.', 'success');
-      router.push('/login');
+      window.location.href = '/login';
     }
   };
 
