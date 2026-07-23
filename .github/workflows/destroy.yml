@@ -25,6 +25,7 @@ jobs:
       TF_VAR_mail_user: ${{ secrets.TF_VAR_mail_user }}
       TF_VAR_mail_password: ${{ secrets.TF_VAR_mail_password }}
       TF_VAR_mail_from: ${{ secrets.TF_VAR_mail_from }}
+      TF_VAR_custom_domain_name: ${{ secrets.TF_VAR_CUSTOM_DOMAIN_NAME }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4

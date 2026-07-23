@@ -57,3 +57,9 @@ variable "mail_from" {
   default     = "no-reply@benzdrive.com"
   description = "SMTP sender address"
 }
+
+variable "custom_domain_name" {
+  type        = string
+  default     = ""
+  description = "Optional custom domain name for API Gateway (e.g. api.benzdrive.site). Leave blank if not using custom domain."
+}

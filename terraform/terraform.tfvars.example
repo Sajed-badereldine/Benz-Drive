@@ -19,3 +19,6 @@ mail_port     = "2525"
 mail_user     = "your-smtp-username"
 mail_password = "your-smtp-password-optional"
 mail_from     = "no-reply@benzdrive.com"
+
+# Optional Custom API Domain Name (e.g., "api.benzdrive.site"). Leave commented out if not using custom domain.
+# custom_domain_name = "api.benzdrive.site"

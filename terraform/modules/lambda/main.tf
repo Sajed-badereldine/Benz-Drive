@@ -267,7 +267,7 @@ resource "aws_lambda_permission" "apigw_lambda" {
 
 variable "custom_domain_name" {
   type        = string
-  default     = "api.benzdrive.site"
+  default     = ""
   description = "Custom domain name for API Gateway mapping"
 }
 
