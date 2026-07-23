@@ -21,7 +21,6 @@ export default function SignUpPage() {
 
   // Redirect to dashboard if already logged in via HttpOnly cookie
   useEffect(() => {
-    localStorage.removeItem('token');
     apiFetch('/auth/me')
       .then((user) => {
         if (user && user.id) {

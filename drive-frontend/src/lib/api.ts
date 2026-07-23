@@ -9,14 +9,6 @@ export async function apiFetch(path: string, options: FetchOptions = {}) {
   
   const headers = new Headers(options.headers || {});
 
-  // Retrieve token fallback from LocalStorage if available
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('token');
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`);
-    }
-  }
-
   // Set Content-Type automatically for JSON body payloads
   let body = options.body;
   if (options.bodyData) {

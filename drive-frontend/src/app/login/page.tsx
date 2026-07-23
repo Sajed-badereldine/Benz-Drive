@@ -26,11 +26,9 @@ export default function LoginPage() {
 
   // Redirect to dashboard if already logged in via HttpOnly cookie
   useEffect(() => {
-    localStorage.removeItem('token');
     apiFetch('/auth/me')
       .then((user) => {
         if (user && user.id) {
-          localStorage.setItem('user', JSON.stringify(user));
           router.push('/dashboard');
         }
       })
@@ -58,8 +56,6 @@ export default function LoginPage() {
         setRequires2FA(true);
         showToast(response.message || 'Two-factor code sent to your email.', 'success');
       } else if (response.data?.user) {
-        localStorage.removeItem('token');
-        localStorage.setItem('user', JSON.stringify(response.data.user));
         showToast(response.message || 'Successfully signed in!', 'success');
         router.push('/dashboard');
       }
@@ -108,8 +104,6 @@ export default function LoginPage() {
       });
 
       if (response.data?.user) {
-        localStorage.removeItem('token');
-        localStorage.setItem('user', JSON.stringify(response.data.user));
         showToast('Successfully signed in!', 'success');
         router.push('/dashboard');
       }

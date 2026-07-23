@@ -122,18 +122,7 @@ export default function DashboardPage() {
       try {
         const user = await apiFetch('/auth/me');
         setCurrentUser(user);
-        localStorage.setItem('user', JSON.stringify(user));
       } catch {
-        const userStr = localStorage.getItem('user');
-        if (userStr) {
-          try {
-            setCurrentUser(JSON.parse(userStr));
-            return;
-          } catch {
-            // fallthrough
-          }
-        }
-        localStorage.clear();
         showToast('Please sign in to access your drive.', 'error');
         router.push('/login');
       }
@@ -141,6 +130,31 @@ export default function DashboardPage() {
 
     verifySession();
   }, [router, showToast]);
+
+  // Close active dropdown menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setActiveMenuId(null);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Helper to compute badge, background color, and icon for Quick Access bento cards
+  const getFileBadgeInfo = (fileName: string, fileType: string) => {
+    const ext = fileName.includes('.') ? fileName.split('.').pop()!.toUpperCase() : 'FILE';
+    if (fileType === 'image' || ['PNG', 'JPG', 'JPEG', 'WEBP', 'GIF', 'SVG'].includes(ext)) {
+      return { badge: ext || 'IMG', bg: 'rgba(0, 94, 151, 0.08)', color: '#005e97', icon: <Image size={42} style={{ color: '#005e97', opacity: 0.8 }} /> };
+    }
+    if (ext === 'PDF') {
+      return { badge: 'PDF', bg: 'rgba(186, 26, 26, 0.08)', color: '#ba1a1a', icon: <FileText size={42} style={{ color: '#ba1a1a', opacity: 0.8 }} /> };
+    }
+    if (fileType === 'video' || ['MP4', 'MOV', 'AVI', 'KEY'].includes(ext)) {
+      return { badge: ext || 'VIDEO', bg: 'rgba(252, 138, 64, 0.12)', color: '#9b4500', icon: <Video size={42} style={{ color: '#9b4500', opacity: 0.8 }} /> };
+    }
+    if (['XLS', 'XLSX', 'CSV'].includes(ext)) {
+      return { badge: ext, bg: 'rgba(16, 185, 129, 0.08)', color: '#10b981', icon: <FileIcon size={42} style={{ color: '#10b981', opacity: 0.8 }} /> };
+    }
+    return { badge: ext, bg: 'rgba(112, 120, 130, 0.08)', color: '#707882', icon: <FileIcon size={42} style={{ color: '#707882', opacity: 0.8 }} /> };
+  };
 
   // Load drive contents or trash depending on active state
   useEffect(() => {
@@ -955,73 +969,81 @@ export default function DashboardPage() {
               <h2 className={styles.greetingTitle}>
                 Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}, {currentUser?.username || 'User'}
               </h2>
-              <p className={styles.greetingSubtitle}>
-                You have 3 items shared with you recently.
-              </p>
             </div>
 
-            {/* Quick Access Bento Section */}
-            {currentFolderId === 'root' && searchQuery.trim() === '' && (
+            {/* Quick Access Bento Section (Real Dynamic Files) */}
+            {currentFolderId === 'root' && searchQuery.trim() === '' && (recentFiles.length > 0 || files.length > 0) && (
               <section>
                 <h3 className={styles.sectionTitle}>
                   <Zap size={14} style={{ color: '#0077be' }} /> Quick Access
                 </h3>
                 <div className={styles.quickAccessGrid}>
-                  <div className={styles.quickCard}>
-                    <div className={styles.quickPreview} style={{ background: 'rgba(186, 26, 26, 0.08)' }}>
-                      <FileText size={42} style={{ color: '#ba1a1a', opacity: 0.8 }} />
-                      <span className={styles.quickBadge}>PDF</span>
-                    </div>
-                    <div className={styles.quickMeta}>
-                      <div>
-                        <p className={styles.quickTitle}>Q3_Financial_Report.pdf</p>
-                        <p className={styles.quickSub}>Edited 2 hrs ago</p>
-                      </div>
-                      <MoreVertical size={16} style={{ color: '#707882' }} />
-                    </div>
-                  </div>
+                  {(recentFiles.length > 0 ? recentFiles : files).slice(0, 4).map((file) => {
+                    const badgeInfo = getFileBadgeInfo(file.fileName, file.fileType);
+                    return (
+                      <div
+                        key={file.id}
+                        className={styles.quickCard}
+                        onClick={() => handleDownload(file.id, file.fileName)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveMenuId(activeMenuId === file.id ? null : file.id);
+                        }}
+                      >
+                        <div className={styles.quickPreview} style={{ background: badgeInfo.bg }}>
+                          {badgeInfo.icon}
+                          <span className={styles.quickBadge}>{badgeInfo.badge}</span>
+                        </div>
+                        <div className={styles.quickMeta}>
+                          <div style={{ minWidth: 0, flexGrow: 1 }}>
+                            <p className={styles.quickTitle} title={file.fileName}>{file.fileName}</p>
+                            <p className={styles.quickSub}>
+                              {file.lastAccessedAt
+                                ? `Opened ${new Date(file.lastAccessedAt).toLocaleDateString()}`
+                                : `Added ${new Date(file.createdAt).toLocaleDateString()}`}
+                            </p>
+                          </div>
 
-                  <div className={styles.quickCard}>
-                    <div className={styles.quickPreview} style={{ background: 'rgba(0, 94, 151, 0.08)' }}>
-                      <Image size={42} style={{ color: '#005e97', opacity: 0.8 }} />
-                      <span className={styles.quickBadge}>PNG</span>
-                    </div>
-                    <div className={styles.quickMeta}>
-                      <div>
-                        <p className={styles.quickTitle}>Brand_Assets_V2.png</p>
-                        <p className={styles.quickSub}>Edited yesterday</p>
-                      </div>
-                      <MoreVertical size={16} style={{ color: '#707882' }} />
-                    </div>
-                  </div>
+                          {/* ... Action Menu Button */}
+                          <div className={styles.menuContainer} onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenuId(activeMenuId === file.id ? null : file.id);
+                              }}
+                              className={styles.actionIconBtn}
+                              title="More actions"
+                            >
+                              <MoreVertical size={16} style={{ color: '#707882' }} />
+                            </button>
 
-                  <div className={styles.quickCard}>
-                    <div className={styles.quickPreview} style={{ background: 'rgba(252, 138, 64, 0.12)' }}>
-                      <Video size={42} style={{ color: '#9b4500', opacity: 0.8 }} />
-                      <span className={styles.quickBadge}>KEY</span>
-                    </div>
-                    <div className={styles.quickMeta}>
-                      <div>
-                        <p className={styles.quickTitle}>Pitch_Deck_Final.key</p>
-                        <p className={styles.quickSub}>Edited 3 days ago</p>
+                            {activeMenuId === file.id && (
+                              <div className={styles.dropdownMenu}>
+                                <button onClick={() => { setActiveMenuId(null); handleDownload(file.id, file.fileName); }} className={styles.dropdownItem}>
+                                  <Download size={15} />
+                                  <span>Download</span>
+                                </button>
+                                <button onClick={(e) => { setActiveMenuId(null); handleToggleStarFile(e, file.id); }} className={styles.dropdownItem}>
+                                  <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} color={file.isStarred ? '#f59e0b' : 'inherit'} />
+                                  <span>{file.isStarred ? 'Unstar file' : 'Add to Starred'}</span>
+                                </button>
+                                <button onClick={(e) => handleDuplicateFile(e, file.id)} className={styles.dropdownItem}>
+                                  <Copy size={15} />
+                                  <span>Make a copy</span>
+                                </button>
+                                <div className={styles.dropdownDivider} />
+                                <button onClick={() => { setActiveMenuId(null); handleTrashFile(file.id); }} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
+                                  <Trash2 size={15} />
+                                  <span>Move to trash</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <MoreVertical size={16} style={{ color: '#707882' }} />
-                    </div>
-                  </div>
-
-                  <div className={styles.quickCard}>
-                    <div className={styles.quickPreview} style={{ background: 'rgba(16, 185, 129, 0.08)' }}>
-                      <FileIcon size={42} style={{ color: '#10b981', opacity: 0.8 }} />
-                      <span className={styles.quickBadge}>XLSX</span>
-                    </div>
-                    <div className={styles.quickMeta}>
-                      <div>
-                        <p className={styles.quickTitle}>Q4_Projections.xlsx</p>
-                        <p className={styles.quickSub}>Edited last week</p>
-                      </div>
-                      <MoreVertical size={16} style={{ color: '#707882' }} />
-                    </div>
-                  </div>
+                    );
+                  })}
                 </div>
               </section>
             )}
@@ -1130,11 +1152,17 @@ export default function DashboardPage() {
                               setSearchQuery('');
                               setSearchResults(null);
                             }}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setActiveMenuId(activeMenuId === folder.id ? null : folder.id);
+                            }}
                             className={`${styles.folderCard} ${draggedItem?.id === folder.id ? styles.dragging : ''} ${activeDropTargetId === folder.id ? styles.dropTarget : ''}`}
                           >
                             <FolderIcon size={20} style={{ color: 'var(--primary)', flexShrink: 0 }} />
                             <span className={styles.folderName}>{folder.name}</span>
-                            <div style={{ display: 'flex', gap: '4px' }}>
+                            
+                            <div className={styles.menuContainer} onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={(e) => handleToggleStarFolder(e, folder.id)}
                                 className={styles.actionIconBtn}
@@ -1143,12 +1171,33 @@ export default function DashboardPage() {
                                 <Star size={14} fill={folder.isStarred ? '#f59e0b' : 'none'} style={{ color: folder.isStarred ? '#f59e0b' : 'inherit' }} />
                               </button>
                               <button
-                                onClick={(e) => { e.stopPropagation(); handleTrashFolder(folder.id); }}
-                                className={`${styles.actionIconBtn} ${styles.actionDeleteBtn}`}
-                                title="Move to Trash"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuId(activeMenuId === folder.id ? null : folder.id);
+                                }}
+                                className={styles.actionIconBtn}
+                                title="More actions"
                               >
-                                <Trash2 size={14} />
+                                <MoreVertical size={14} />
                               </button>
+
+                              {activeMenuId === folder.id && (
+                                <div className={styles.dropdownMenu}>
+                                  <button onClick={() => { setActiveMenuId(null); setCurrentFolderId(folder.id); setSearchQuery(''); }} className={styles.dropdownItem}>
+                                    <FolderIcon size={15} />
+                                    <span>Open folder</span>
+                                  </button>
+                                  <button onClick={(e) => { setActiveMenuId(null); handleToggleStarFolder(e, folder.id); }} className={styles.dropdownItem}>
+                                    <Star size={15} fill={folder.isStarred ? '#f59e0b' : 'none'} color={folder.isStarred ? '#f59e0b' : 'inherit'} />
+                                    <span>{folder.isStarred ? 'Unstar folder' : 'Add to Starred'}</span>
+                                  </button>
+                                  <div className={styles.dropdownDivider} />
+                                  <button onClick={() => { setActiveMenuId(null); handleTrashFolder(folder.id); }} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
+                                    <Trash2 size={15} />
+                                    <span>Move to trash</span>
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -1167,6 +1216,11 @@ export default function DashboardPage() {
                             draggable
                             onDragStart={(e) => handleDragStartItem(e, file.id, 'file', file.fileName)}
                             onDragEnd={handleDragEndItem}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setActiveMenuId(activeMenuId === file.id ? null : file.id);
+                            }}
                             className={`${styles.fileRow} ${draggedItem?.id === file.id ? styles.dragging : ''}`}
                           >
                             <div className={styles.fileInfo}>
@@ -1204,13 +1258,41 @@ export default function DashboardPage() {
                                 <Copy size={15} />
                               </button>
 
-                              <button
-                                onClick={() => handleTrashFile(file.id)}
-                                className={`${styles.actionIconBtn} ${styles.actionDeleteBtn}`}
-                                title="Move to Trash"
-                              >
-                                <Trash2 size={15} />
-                              </button>
+                              {/* More actions (...) dropdown menu */}
+                              <div className={styles.menuContainer} onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuId(activeMenuId === file.id ? null : file.id);
+                                  }}
+                                  className={styles.actionIconBtn}
+                                  title="More actions"
+                                >
+                                  <MoreVertical size={16} />
+                                </button>
+
+                                {activeMenuId === file.id && (
+                                  <div className={styles.dropdownMenu}>
+                                    <button onClick={() => { setActiveMenuId(null); handleDownload(file.id, file.fileName); }} className={styles.dropdownItem}>
+                                      <Download size={15} />
+                                      <span>Download</span>
+                                    </button>
+                                    <button onClick={(e) => { setActiveMenuId(null); handleToggleStarFile(e, file.id); }} className={styles.dropdownItem}>
+                                      <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} color={file.isStarred ? '#f59e0b' : 'inherit'} />
+                                      <span>{file.isStarred ? 'Unstar file' : 'Add to Starred'}</span>
+                                    </button>
+                                    <button onClick={(e) => handleDuplicateFile(e, file.id)} className={styles.dropdownItem}>
+                                      <Copy size={15} />
+                                      <span>Make a copy</span>
+                                    </button>
+                                    <div className={styles.dropdownDivider} />
+                                    <button onClick={() => { setActiveMenuId(null); handleTrashFile(file.id); }} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
+                                      <Trash2 size={15} />
+                                      <span>Move to trash</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
                         ))}
