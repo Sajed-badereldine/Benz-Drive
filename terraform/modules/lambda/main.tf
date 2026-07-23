@@ -271,17 +271,11 @@ variable "custom_domain_name" {
   description = "Custom domain name for API Gateway mapping"
 }
 
-# Automatically look up existing API Gateway Custom Domain Name
-data "aws_apigatewayv2_domain_name" "api_domain" {
-  count       = var.custom_domain_name != "" ? 1 : 0
-  domain_name = var.custom_domain_name
-}
-
 # Automatically map API Gateway to Custom Domain Name on terraform apply
 resource "aws_apigatewayv2_api_mapping" "custom_domain_mapping" {
-  count       = length(data.aws_apigatewayv2_domain_name.api_domain) > 0 ? 1 : 0
+  count       = var.custom_domain_name != "" ? 1 : 0
   api_id      = aws_apigatewayv2_api.http_api.id
-  domain_name = data.aws_apigatewayv2_domain_name.api_domain[0].domain_name
+  domain_name = var.custom_domain_name
   stage       = aws_apigatewayv2_stage.default_stage.name
 }
 
