@@ -971,85 +971,8 @@ export default function DashboardPage() {
               </h2>
             </div>
 
-            {/* Quick Access Bento Section (Real Dynamic Files) */}
-            {currentFolderId === 'root' && searchQuery.trim() === '' && (recentFiles.length > 0 || files.length > 0) && (
-              <section>
-                <h3 className={styles.sectionTitle}>
-                  <Zap size={14} style={{ color: '#0077be' }} /> Quick Access
-                </h3>
-                <div className={styles.quickAccessGrid}>
-                  {(recentFiles.length > 0 ? recentFiles : files).slice(0, 4).map((file) => {
-                    const badgeInfo = getFileBadgeInfo(file.fileName, file.fileType);
-                    return (
-                      <div
-                        key={file.id}
-                        className={styles.quickCard}
-                        onClick={() => handleDownload(file.id, file.fileName)}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setActiveMenuId(activeMenuId === file.id ? null : file.id);
-                        }}
-                      >
-                        <div className={styles.quickPreview} style={{ background: badgeInfo.bg }}>
-                          {badgeInfo.icon}
-                          <span className={styles.quickBadge}>{badgeInfo.badge}</span>
-                        </div>
-                        <div className={styles.quickMeta}>
-                          <div style={{ minWidth: 0, flexGrow: 1 }}>
-                            <p className={styles.quickTitle} title={file.fileName}>{file.fileName}</p>
-                            <p className={styles.quickSub}>
-                              {file.lastAccessedAt
-                                ? `Opened ${new Date(file.lastAccessedAt).toLocaleDateString()}`
-                                : `Added ${new Date(file.createdAt).toLocaleDateString()}`}
-                            </p>
-                          </div>
-
-                          {/* ... Action Menu Button */}
-                          <div className={styles.menuContainer} onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveMenuId(activeMenuId === file.id ? null : file.id);
-                              }}
-                              className={styles.actionIconBtn}
-                              title="More actions"
-                            >
-                              <MoreVertical size={16} style={{ color: '#707882' }} />
-                            </button>
-
-                            {activeMenuId === file.id && (
-                              <div className={styles.dropdownMenu}>
-                                <button onClick={() => { setActiveMenuId(null); handleDownload(file.id, file.fileName); }} className={styles.dropdownItem}>
-                                  <Download size={15} />
-                                  <span>Download</span>
-                                </button>
-                                <button onClick={(e) => { setActiveMenuId(null); handleToggleStarFile(e, file.id); }} className={styles.dropdownItem}>
-                                  <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} color={file.isStarred ? '#f59e0b' : 'inherit'} />
-                                  <span>{file.isStarred ? 'Unstar file' : 'Add to Starred'}</span>
-                                </button>
-                                <button onClick={(e) => handleDuplicateFile(e, file.id)} className={styles.dropdownItem}>
-                                  <Copy size={15} />
-                                  <span>Make a copy</span>
-                                </button>
-                                <div className={styles.dropdownDivider} />
-                                <button onClick={() => { setActiveMenuId(null); handleTrashFile(file.id); }} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
-                                  <Trash2 size={15} />
-                                  <span>Move to trash</span>
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
-
+            {/* Directory breadcrumbs / Search Header */}
             <div className={styles.toolbar}>
-              {/* Directory breadcrumbs / Search Header */}
               <div className={styles.breadcrumbs}>
                 {searchQuery.trim() !== '' ? (
                   <span className={styles.breadcrumbActive}>
@@ -1168,7 +1091,7 @@ export default function DashboardPage() {
                                 className={styles.actionIconBtn}
                                 title={folder.isStarred ? 'Unstar Folder' : 'Star Folder'}
                               >
-                                <Star size={14} fill={folder.isStarred ? '#f59e0b' : 'none'} style={{ color: folder.isStarred ? '#f59e0b' : 'inherit' }} />
+                                <Star size={14} fill={folder.isStarred ? '#f59e0b' : 'none'} style={{ color: folder.isStarred ? '#f59e0b' : '#707882' }} />
                               </button>
                               <button
                                 onClick={(e) => {
@@ -1188,7 +1111,7 @@ export default function DashboardPage() {
                                     <span>Open folder</span>
                                   </button>
                                   <button onClick={(e) => { setActiveMenuId(null); handleToggleStarFolder(e, folder.id); }} className={styles.dropdownItem}>
-                                    <Star size={15} fill={folder.isStarred ? '#f59e0b' : 'none'} color={folder.isStarred ? '#f59e0b' : 'inherit'} />
+                                    <Star size={15} fill={folder.isStarred ? '#f59e0b' : 'none'} style={{ color: folder.isStarred ? '#f59e0b' : '#404751' }} />
                                     <span>{folder.isStarred ? 'Unstar folder' : 'Add to Starred'}</span>
                                   </button>
                                   <div className={styles.dropdownDivider} />
@@ -1239,7 +1162,7 @@ export default function DashboardPage() {
                                 className={styles.actionIconBtn}
                                 title={file.isStarred ? 'Unstar File' : 'Star File'}
                               >
-                                <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} style={{ color: file.isStarred ? '#f59e0b' : 'inherit' }} />
+                                <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} style={{ color: file.isStarred ? '#f59e0b' : '#707882' }} />
                               </button>
 
                               <button
@@ -1278,9 +1201,9 @@ export default function DashboardPage() {
                                       <span>Download</span>
                                     </button>
                                     <button onClick={(e) => { setActiveMenuId(null); handleToggleStarFile(e, file.id); }} className={styles.dropdownItem}>
-                                      <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} color={file.isStarred ? '#f59e0b' : 'inherit'} />
-                                      <span>{file.isStarred ? 'Unstar file' : 'Add to Starred'}</span>
-                                    </button>
+                                   <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} style={{ color: file.isStarred ? '#f59e0b' : '#404751' }} />
+                                   <span>{file.isStarred ? 'Unstar file' : 'Add to Starred'}</span>
+                                 </button>
                                     <button onClick={(e) => handleDuplicateFile(e, file.id)} className={styles.dropdownItem}>
                                       <Copy size={15} />
                                       <span>Make a copy</span>
