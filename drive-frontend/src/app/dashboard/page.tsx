@@ -1157,7 +1157,7 @@ export default function DashboardPage() {
                               e.stopPropagation();
                               setActiveMenuId(activeMenuId === folder.id ? null : folder.id);
                             }}
-                            className={`${styles.folderCard} ${draggedItem?.id === folder.id ? styles.dragging : ''} ${activeDropTargetId === folder.id ? styles.dropTarget : ''}`}
+                            className={`${styles.folderCard} ${activeMenuId === folder.id ? styles.activeMenuCard : ''} ${draggedItem?.id === folder.id ? styles.dragging : ''} ${activeDropTargetId === folder.id ? styles.dropTarget : ''}`}
                           >
                             <FolderIcon size={20} style={{ color: 'var(--primary)', flexShrink: 0 }} />
                             <span className={styles.folderName}>{folder.name}</span>
@@ -1221,7 +1221,7 @@ export default function DashboardPage() {
                               e.stopPropagation();
                               setActiveMenuId(activeMenuId === file.id ? null : file.id);
                             }}
-                            className={`${styles.fileRow} ${draggedItem?.id === file.id ? styles.dragging : ''}`}
+                            className={`${styles.fileRow} ${activeMenuId === file.id ? styles.activeMenuRow : ''} ${draggedItem?.id === file.id ? styles.dragging : ''}`}
                           >
                             <div className={styles.fileInfo}>
                               {getFileIcon(file.fileType)}
