@@ -24,7 +24,17 @@ import {
   Music,
   User as UserIcon,
   MoreVertical,
-  Trash
+  Trash,
+  Cloud,
+  Sparkles,
+  Bell,
+  HelpCircle,
+  Clock,
+  Users,
+  Zap,
+  Star,
+  Copy,
+  MoreHorizontal
 } from 'lucide-react';
 
 interface FileItem {
@@ -34,12 +44,16 @@ interface FileItem {
   sizeBytes: number;
   fileType: 'image' | 'video' | 'audio' | 'document' | 'other';
   createdAt: string;
+  isStarred?: boolean;
+  lastAccessedAt?: string;
 }
 
 interface FolderItem {
   id: string;
   name: string;
   parentFolderId: string | null;
+  isStarred?: boolean;
+  lastAccessedAt?: string;
 }
 
 interface User {
@@ -58,7 +72,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const { showToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'drive' | 'trash' | 'settings'>('drive');
+  const [activeTab, setActiveTab] = useState<'drive' | 'starred' | 'recent' | 'shared' | 'trash' | 'settings'>('drive');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   
   // Storage usage states
@@ -72,6 +86,12 @@ export default function DashboardPage() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [breadcrumbs, setBreadcrumbs] = useState<FolderItem[]>([]);
   
+  // Starred & Recent items states
+  const [starredFolders, setStarredFolders] = useState<FolderItem[]>([]);
+  const [starredFiles, setStarredFiles] = useState<FileItem[]>([]);
+  const [recentFiles, setRecentFiles] = useState<FileItem[]>([]);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
   // Trashed items states
   const [currentTrashedFolderId, setCurrentTrashedFolderId] = useState<string | null>(null);
   const [trashedBreadcrumbs, setTrashedBreadcrumbs] = useState<FolderItem[]>([]);
@@ -139,6 +159,10 @@ export default function DashboardPage() {
     if (activeTab === 'drive') {
       fetchFolderContents();
       fetchBreadcrumbs();
+    } else if (activeTab === 'starred') {
+      fetchStarredItems();
+    } else if (activeTab === 'recent') {
+      fetchRecentFiles();
     } else if (activeTab === 'trash') {
       fetchTrashedItems();
     }
@@ -208,6 +232,76 @@ export default function DashboardPage() {
       setStorageUsed(data.usedBytes);
     } catch (err) {
       console.error('Error calculating quota usage:', err);
+    }
+  };
+
+  // Fetch starred items
+  const fetchStarredItems = async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch('/files/starred');
+      setStarredFolders(data.folders || []);
+      setStarredFiles(data.files || []);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch recent files
+  const fetchRecentFiles = async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch('/files/recent');
+      setRecentFiles(data || []);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Toggle Star on File
+  const handleToggleStarFile = async (e: React.MouseEvent, fileId: string) => {
+    e.stopPropagation();
+    try {
+      const res = await apiFetch(`/files/${fileId}/star`, { method: 'PATCH' });
+      showToast(res.message, 'success');
+      if (activeTab === 'drive') fetchFolderContents();
+      if (activeTab === 'starred') fetchStarredItems();
+      if (activeTab === 'recent') fetchRecentFiles();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Toggle Star on Folder
+  const handleToggleStarFolder = async (e: React.MouseEvent, folderId: string) => {
+    e.stopPropagation();
+    try {
+      const res = await apiFetch(`/files/folders/${folderId}/star`, { method: 'PATCH' });
+      showToast(res.message, 'success');
+      if (activeTab === 'drive') fetchFolderContents();
+      if (activeTab === 'starred') fetchStarredItems();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Duplicate File (Make a Copy)
+  const handleDuplicateFile = async (e: React.MouseEvent, fileId: string) => {
+    e.stopPropagation();
+    setActiveMenuId(null);
+    try {
+      const res = await apiFetch(`/files/${fileId}/copy`, { method: 'POST' });
+      showToast(res.message, 'success');
+      fetchQuotaUsage();
+      if (activeTab === 'drive') fetchFolderContents();
+      if (activeTab === 'starred') fetchStarredItems();
+      if (activeTab === 'recent') fetchRecentFiles();
+    } catch (err: any) {
+      showToast(err.message, 'error');
     }
   };
 
@@ -711,14 +805,44 @@ export default function DashboardPage() {
       {/* 1. Sidebar Panel */}
       <aside className={styles.sidebar}>
         <div>
-          <div className={styles.logo}>BenzDrive</div>
+          <div className={styles.brand}>
+            <div className={styles.brandIcon}>
+              <Cloud size={24} />
+            </div>
+            <div className={styles.brandText}>
+              <h1 className={styles.logo}>Aether</h1>
+              <span className={styles.subLogo}>BenzDrive Storage</span>
+            </div>
+          </div>
+
           <nav className={styles.nav}>
             <button
               onClick={() => { setActiveTab('drive'); setCurrentFolderId('root'); }}
               className={`${styles.navLink} ${activeTab === 'drive' ? styles.activeNavLink : ''}`}
             >
               <FolderIcon size={18} />
-              <span>My Drive</span>
+              <span>My Files</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('recent')}
+              className={`${styles.navLink} ${activeTab === 'recent' ? styles.activeNavLink : ''}`}
+            >
+              <Clock size={18} />
+              <span>Recent</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('starred')}
+              className={`${styles.navLink} ${activeTab === 'starred' ? styles.activeNavLink : ''}`}
+            >
+              <Star size={18} />
+              <span>Starred</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('shared')}
+              className={`${styles.navLink} ${activeTab === 'shared' ? styles.activeNavLink : ''}`}
+            >
+              <Users size={18} />
+              <span>Shared</span>
             </button>
             <button
               onClick={() => setActiveTab('trash')}
@@ -741,19 +865,28 @@ export default function DashboardPage() {
           {/* Storage Quota bar */}
           <div className={styles.quotaContainer}>
             <div className={styles.quotaLabel}>
-              <span>Storage Used</span>
+              <span>Storage</span>
               <span>{formatBytes(storageUsed)} / 500 MB</span>
             </div>
             <div className={styles.progressBar}>
               <div
-                className={styles.progressFill}
-                style={{
-                  width: `${quotaPercent}%`,
-                  backgroundColor: quotaPercent > 90 ? 'var(--danger)' : quotaPercent > 70 ? '#f59e0b' : 'var(--primary)'
-                }}
+                className={`${styles.progressFill} ${quotaPercent > 90 ? styles.progressWarning : ''}`}
+                style={{ width: `${quotaPercent}%` }}
               ></div>
             </div>
           </div>
+
+          {currentUser && (
+            <div className={styles.userCard}>
+              <div className={styles.avatar}>
+                {currentUser.username.charAt(0).toUpperCase()}
+              </div>
+              <div className={styles.userText}>
+                <span className={styles.username}>{currentUser.username}</span>
+                <span className={styles.email}>{currentUser.email}</span>
+              </div>
+            </div>
+          )}
 
           <button onClick={handleLogout} className={styles.logoutButton}>
             <LogOut size={18} />
@@ -791,7 +924,7 @@ export default function DashboardPage() {
               <Search size={16} className={styles.searchIcon} />
               <input
                 type="text"
-                placeholder="Search in folder..."
+                placeholder="Search files, folders, or recent activity..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className={styles.searchInput}
@@ -801,22 +934,98 @@ export default function DashboardPage() {
             <div style={{ flexGrow: 1 }} />
           )}
 
-          {currentUser && (
-            <div className={styles.userInfo}>
-              <div className={styles.avatar}>
-                {currentUser.username.charAt(0).toUpperCase()}
-              </div>
-              <div className={styles.userText}>
-                <span className={styles.username}>{currentUser.username}</span>
-                <span className={styles.email}>{currentUser.email}</span>
-              </div>
-            </div>
-          )}
+          <div className={styles.headerActions}>
+            <button className={styles.headerIconBtn} title="Notifications">
+              <Bell size={18} />
+            </button>
+            <button className={styles.headerIconBtn} title="Settings" onClick={() => setActiveTab('settings')}>
+              <Settings size={18} />
+            </button>
+            <button className={styles.headerIconBtn} title="Help & Support">
+              <HelpCircle size={18} />
+            </button>
+          </div>
         </header>
 
         {/* Tab contents */}
         {activeTab === 'drive' && (
           <>
+            {/* Welcome Greeting Banner */}
+            <div className={styles.greetingBanner}>
+              <h2 className={styles.greetingTitle}>
+                Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}, {currentUser?.username || 'User'}
+              </h2>
+              <p className={styles.greetingSubtitle}>
+                You have 3 items shared with you recently.
+              </p>
+            </div>
+
+            {/* Quick Access Bento Section */}
+            {currentFolderId === 'root' && searchQuery.trim() === '' && (
+              <section>
+                <h3 className={styles.sectionTitle}>
+                  <Zap size={14} style={{ color: '#0077be' }} /> Quick Access
+                </h3>
+                <div className={styles.quickAccessGrid}>
+                  <div className={styles.quickCard}>
+                    <div className={styles.quickPreview} style={{ background: 'rgba(186, 26, 26, 0.08)' }}>
+                      <FileText size={42} style={{ color: '#ba1a1a', opacity: 0.8 }} />
+                      <span className={styles.quickBadge}>PDF</span>
+                    </div>
+                    <div className={styles.quickMeta}>
+                      <div>
+                        <p className={styles.quickTitle}>Q3_Financial_Report.pdf</p>
+                        <p className={styles.quickSub}>Edited 2 hrs ago</p>
+                      </div>
+                      <MoreVertical size={16} style={{ color: '#707882' }} />
+                    </div>
+                  </div>
+
+                  <div className={styles.quickCard}>
+                    <div className={styles.quickPreview} style={{ background: 'rgba(0, 94, 151, 0.08)' }}>
+                      <Image size={42} style={{ color: '#005e97', opacity: 0.8 }} />
+                      <span className={styles.quickBadge}>PNG</span>
+                    </div>
+                    <div className={styles.quickMeta}>
+                      <div>
+                        <p className={styles.quickTitle}>Brand_Assets_V2.png</p>
+                        <p className={styles.quickSub}>Edited yesterday</p>
+                      </div>
+                      <MoreVertical size={16} style={{ color: '#707882' }} />
+                    </div>
+                  </div>
+
+                  <div className={styles.quickCard}>
+                    <div className={styles.quickPreview} style={{ background: 'rgba(252, 138, 64, 0.12)' }}>
+                      <Video size={42} style={{ color: '#9b4500', opacity: 0.8 }} />
+                      <span className={styles.quickBadge}>KEY</span>
+                    </div>
+                    <div className={styles.quickMeta}>
+                      <div>
+                        <p className={styles.quickTitle}>Pitch_Deck_Final.key</p>
+                        <p className={styles.quickSub}>Edited 3 days ago</p>
+                      </div>
+                      <MoreVertical size={16} style={{ color: '#707882' }} />
+                    </div>
+                  </div>
+
+                  <div className={styles.quickCard}>
+                    <div className={styles.quickPreview} style={{ background: 'rgba(16, 185, 129, 0.08)' }}>
+                      <FileIcon size={42} style={{ color: '#10b981', opacity: 0.8 }} />
+                      <span className={styles.quickBadge}>XLSX</span>
+                    </div>
+                    <div className={styles.quickMeta}>
+                      <div>
+                        <p className={styles.quickTitle}>Q4_Projections.xlsx</p>
+                        <p className={styles.quickSub}>Edited last week</p>
+                      </div>
+                      <MoreVertical size={16} style={{ color: '#707882' }} />
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
             <div className={styles.toolbar}>
               {/* Directory breadcrumbs / Search Header */}
               <div className={styles.breadcrumbs}>
@@ -925,13 +1134,22 @@ export default function DashboardPage() {
                           >
                             <FolderIcon size={20} style={{ color: 'var(--primary)', flexShrink: 0 }} />
                             <span className={styles.folderName}>{folder.name}</span>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleTrashFolder(folder.id); }}
-                              className={`${styles.actionIconBtn} ${styles.actionDeleteBtn}`}
-                              title="Move to Trash"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                onClick={(e) => handleToggleStarFolder(e, folder.id)}
+                                className={styles.actionIconBtn}
+                                title={folder.isStarred ? 'Unstar Folder' : 'Star Folder'}
+                              >
+                                <Star size={14} fill={folder.isStarred ? '#f59e0b' : 'none'} style={{ color: folder.isStarred ? '#f59e0b' : 'inherit' }} />
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleTrashFolder(folder.id); }}
+                                className={`${styles.actionIconBtn} ${styles.actionDeleteBtn}`}
+                                title="Move to Trash"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -963,12 +1181,29 @@ export default function DashboardPage() {
 
                             <div className={styles.fileActions}>
                               <button
+                                onClick={(e) => handleToggleStarFile(e, file.id)}
+                                className={styles.actionIconBtn}
+                                title={file.isStarred ? 'Unstar File' : 'Star File'}
+                              >
+                                <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} style={{ color: file.isStarred ? '#f59e0b' : 'inherit' }} />
+                              </button>
+
+                              <button
                                 onClick={() => handleDownload(file.id, file.fileName)}
                                 className={styles.actionIconBtn}
                                 title="Download File"
                               >
                                 <Download size={15} />
                               </button>
+
+                              <button
+                                onClick={(e) => handleDuplicateFile(e, file.id)}
+                                className={styles.actionIconBtn}
+                                title="Make a Copy"
+                              >
+                                <Copy size={15} />
+                              </button>
+
                               <button
                                 onClick={() => handleTrashFile(file.id)}
                                 className={`${styles.actionIconBtn} ${styles.actionDeleteBtn}`}
@@ -1136,6 +1371,213 @@ export default function DashboardPage() {
                     {currentUser.isTwoFactorEnabled ? 'Disable 2FA' : 'Enable 2FA'}
                   </button>
                 </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Starred items tab */}
+        {activeTab === 'starred' && (
+          <>
+            <div className={styles.toolbar}>
+              <div className={styles.breadcrumbs}>
+                <span className={styles.breadcrumbActive}>Starred Items</span>
+              </div>
+            </div>
+
+            <div className={styles.contentArea}>
+              {loading ? (
+                <div style={{ textAlign: 'center', marginTop: '40px', opacity: 0.7 }}>Loading starred items...</div>
+              ) : (
+                <>
+                  {starredFolders.length === 0 && starredFiles.length === 0 && (
+                    <div className={styles.emptyState}>
+                      <Star size={44} style={{ opacity: 0.3, color: '#f59e0b' }} />
+                      <p style={{ fontWeight: 600 }}>No Starred Items</p>
+                      <span style={{ fontSize: '13px', opacity: 0.7 }}>Click the star icon on any file or folder to access it quickly here.</span>
+                    </div>
+                  )}
+
+                  {/* Starred Folders */}
+                  {starredFolders.length > 0 && (
+                    <div>
+                      <h3 className={styles.sectionTitle}>Starred Folders</h3>
+                      <div className={styles.folderGrid}>
+                        {starredFolders.map((folder) => (
+                          <div
+                            key={folder.id}
+                            onDoubleClick={() => {
+                              setActiveTab('drive');
+                              setCurrentFolderId(folder.id);
+                            }}
+                            className={styles.folderCard}
+                          >
+                            <FolderIcon size={20} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                            <span className={styles.folderName}>{folder.name}</span>
+                            <button
+                              onClick={(e) => handleToggleStarFolder(e, folder.id)}
+                              className={styles.actionIconBtn}
+                              title="Unstar Folder"
+                            >
+                              <Star size={14} fill="#f59e0b" style={{ color: '#f59e0b' }} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Starred Files */}
+                  {starredFiles.length > 0 && (
+                    <div className={styles.filesSection}>
+                      <h3 className={styles.sectionTitle}>Starred Files</h3>
+                      <div className={styles.fileList}>
+                        {starredFiles.map((file) => (
+                          <div key={file.id} className={styles.fileRow}>
+                            <div className={styles.fileInfo}>
+                              {getFileIcon(file.fileType)}
+                              <span className={styles.fileName}>{file.fileName}</span>
+                            </div>
+                            
+                            <div className={styles.fileMeta}>
+                              <span>{formatBytes(file.sizeBytes)}</span>
+                              <span>{new Date(file.createdAt).toLocaleDateString()}</span>
+                            </div>
+
+                            <div className={styles.fileActions}>
+                              <button
+                                onClick={(e) => handleToggleStarFile(e, file.id)}
+                                className={styles.actionIconBtn}
+                                title="Unstar File"
+                              >
+                                <Star size={15} fill="#f59e0b" style={{ color: '#f59e0b' }} />
+                              </button>
+                              <button
+                                onClick={() => handleDownload(file.id, file.fileName)}
+                                className={styles.actionIconBtn}
+                                title="Download File"
+                              >
+                                <Download size={15} />
+                              </button>
+                              <button
+                                onClick={(e) => handleDuplicateFile(e, file.id)}
+                                className={styles.actionIconBtn}
+                                title="Make a Copy"
+                              >
+                                <Copy size={15} />
+                              </button>
+                              <button
+                                onClick={() => handleTrashFile(file.id)}
+                                className={`${styles.actionIconBtn} ${styles.actionDeleteBtn}`}
+                                title="Move to Trash"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Recent files tab */}
+        {activeTab === 'recent' && (
+          <>
+            <div className={styles.toolbar}>
+              <div className={styles.breadcrumbs}>
+                <span className={styles.breadcrumbActive}>Recent Files</span>
+              </div>
+            </div>
+
+            <div className={styles.contentArea}>
+              {loading ? (
+                <div style={{ textAlign: 'center', marginTop: '40px', opacity: 0.7 }}>Loading recent files...</div>
+              ) : (
+                <>
+                  {recentFiles.length === 0 && (
+                    <div className={styles.emptyState}>
+                      <Clock size={44} style={{ opacity: 0.3, color: '#0077be' }} />
+                      <p style={{ fontWeight: 600 }}>Your recent activity</p>
+                      <span style={{ fontSize: '13px', opacity: 0.7 }}>Files you edit or open recently will appear here.</span>
+                    </div>
+                  )}
+
+                  {recentFiles.length > 0 && (
+                    <div className={styles.filesSection}>
+                      <h3 className={styles.sectionTitle}>Recently Accessed & Modified Files</h3>
+                      <div className={styles.fileList}>
+                        {recentFiles.map((file) => (
+                          <div key={file.id} className={styles.fileRow}>
+                            <div className={styles.fileInfo}>
+                              {getFileIcon(file.fileType)}
+                              <span className={styles.fileName}>{file.fileName}</span>
+                            </div>
+                            
+                            <div className={styles.fileMeta}>
+                              <span>{formatBytes(file.sizeBytes)}</span>
+                              <span>{file.lastAccessedAt ? `Accessed ${new Date(file.lastAccessedAt).toLocaleTimeString()}` : `Modified ${new Date(file.createdAt).toLocaleDateString()}`}</span>
+                            </div>
+
+                            <div className={styles.fileActions}>
+                              <button
+                                onClick={(e) => handleToggleStarFile(e, file.id)}
+                                className={styles.actionIconBtn}
+                                title={file.isStarred ? 'Unstar File' : 'Star File'}
+                              >
+                                <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} style={{ color: file.isStarred ? '#f59e0b' : 'inherit' }} />
+                              </button>
+                              <button
+                                onClick={() => handleDownload(file.id, file.fileName)}
+                                className={styles.actionIconBtn}
+                                title="Download File"
+                              >
+                                <Download size={15} />
+                              </button>
+                              <button
+                                onClick={(e) => handleDuplicateFile(e, file.id)}
+                                className={styles.actionIconBtn}
+                                title="Make a Copy"
+                              >
+                                <Copy size={15} />
+                              </button>
+                              <button
+                                onClick={() => handleTrashFile(file.id)}
+                                className={`${styles.actionIconBtn} ${styles.actionDeleteBtn}`}
+                                title="Move to Trash"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Shared files tab */}
+        {activeTab === 'shared' && (
+          <>
+            <div className={styles.toolbar}>
+              <div className={styles.breadcrumbs}>
+                <span className={styles.breadcrumbActive}>Shared with Me</span>
+              </div>
+            </div>
+
+            <div className={styles.contentArea}>
+              <div className={styles.emptyState}>
+                <Users size={44} style={{ opacity: 0.3, color: '#0077be' }} />
+                <p style={{ fontWeight: 600 }}>Shared with Me</p>
+                <span style={{ fontSize: '13px', opacity: 0.7 }}>Files and folders shared with your account will appear here.</span>
               </div>
             </div>
           </>

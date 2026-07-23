@@ -1,33 +1,35 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --background: #060913;
-  --foreground: #f3f4f6;
+  --background: #fbf9f8;
+  --background-end: #e4e2e1;
+  --foreground: #1b1c1c;
   
-  --primary: #0070f3;
-  --primary-hover: #005ecf;
-  --primary-glow: rgba(0, 112, 243, 0.15);
+  --primary: #005e97;
+  --primary-container: #0077be;
+  --primary-hover: #004a79;
+  --primary-glow: rgba(0, 119, 190, 0.25);
   
-  --secondary: #10b981;
-  --secondary-hover: #059669;
+  --secondary: #9b4500;
+  --secondary-container: #fc8a40;
   
-  --danger: #ef4444;
-  --danger-hover: #dc2626;
+  --danger: #ba1a1a;
+  --danger-hover: #93000a;
   
-  --card-glass: rgba(17, 24, 43, 0.65);
-  --card-border: rgba(255, 255, 255, 0.07);
-  --card-border-hover: rgba(255, 255, 255, 0.12);
+  --card-glass: rgba(255, 255, 255, 0.85);
+  --card-border: #e2e8f0;
+  --card-border-hover: #0077be;
   
-  --input-bg: rgba(9, 13, 26, 0.7);
-  --input-focus-border: #0070f3;
-  --text-muted: #9ca3af;
+  --input-bg: rgba(255, 255, 255, 0.6);
+  --input-focus-border: #0077be;
+  --text-muted: #707882;
 }
 
 * {
   box-sizing: border-box;
   padding: 0;
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -36,43 +38,44 @@ html, body {
   width: 100%;
   height: 100%;
   color: var(--foreground);
-  background-color: var(--background);
+  background: linear-gradient(135deg, var(--background) 0%, var(--background-end) 100%);
+  background-attachment: fixed;
   overflow: hidden;
 }
 
 /* Custom Scrollbar Styles */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 4px;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.12);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.25);
 }
 
 /* Glassmorphism utility card */
 .glass-panel {
   background: var(--card-glass);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--card-border);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-  transition: border-color 0.2s ease, transform 0.2s ease;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px -10px rgba(0, 94, 151, 0.12);
+  transition: border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
 }
 
 .glass-panel:hover {
   border-color: var(--card-border-hover);
+  box-shadow: 0 14px 36px -10px rgba(0, 94, 151, 0.2);
 }
 
 /* Page Container (Full Screen Layout) */
@@ -82,7 +85,7 @@ html, body {
   justify-content: center;
   width: 100vw;
   height: 100vh;
-  background-color: #05070f;
+  background: linear-gradient(135deg, #fbf9f8 0%, #e4e2e1 100%);
   position: relative;
   overflow: hidden;
 }

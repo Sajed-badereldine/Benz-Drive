@@ -5,7 +5,7 @@ import { Files, UploadStatus, FileType } from './entities/files.entity';
 import { Folder } from './entities/folder.entity';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as crypto from 'crypto';
 
@@ -213,6 +213,10 @@ export class FilesService {
   // 4. Download file from S3 (returns a readable stream)
   async getFileStream(fileId: string, userId: string) {
     const file = await this.getFileMetadata(fileId, userId);
+
+    // Update lastAccessedAt for recency tracking
+    file.lastAccessedAt = new Date();
+    await this.filesRepository.save(file);
 
     const command = new GetObjectCommand({
       Bucket: this.bucketName,
@@ -725,5 +729,91 @@ export class FilesService {
     folder.parentFolderId = targetFolderId || null;
     await this.folderRepository.save(folder);
     return { message: 'Folder moved successfully', folder };
+  }
+
+  // 20. Toggle star on a file
+  async toggleStarFile(fileId: string, userId: string) {
+    const file = await this.filesRepository.findOne({ where: { id: fileId, userId } });
+    if (!file) throw new NotFoundException('File not found');
+    file.isStarred = !file.isStarred;
+    await this.filesRepository.save(file);
+    return { message: file.isStarred ? 'File starred' : 'File unstarred', isStarred: file.isStarred, file };
+  }
+
+  // 21. Toggle star on a folder
+  async toggleStarFolder(folderId: string, userId: string) {
+    const folder = await this.folderRepository.findOne({ where: { id: folderId, userId } });
+    if (!folder) throw new NotFoundException('Folder not found');
+    folder.isStarred = !folder.isStarred;
+    await this.folderRepository.save(folder);
+    return { message: folder.isStarred ? 'Folder starred' : 'Folder unstarred', isStarred: folder.isStarred, folder };
+  }
+
+  // 22. Get all starred items for user
+  async getStarredItems(userId: string) {
+    const folders = await this.folderRepository.find({
+      where: { userId, isTrashed: false, isStarred: true },
+      order: { updatedAt: 'DESC' },
+    });
+    const files = await this.filesRepository.find({
+      where: { userId, isTrashed: false, uploadStatus: UploadStatus.ACTIVE, isStarred: true },
+      order: { updatedAt: 'DESC' },
+    });
+    return { folders, files };
+  }
+
+  // 23. Get recent files for user
+  async getRecentFiles(userId: string) {
+    const files = await this.filesRepository.find({
+      where: { userId, isTrashed: false, uploadStatus: UploadStatus.ACTIVE },
+      order: { lastAccessedAt: 'DESC', updatedAt: 'DESC' },
+      take: 50,
+    });
+    return files;
+  }
+
+  // 24. Duplicate a file (Make a copy)
+  async duplicateFile(fileId: string, userId: string) {
+    const original = await this.filesRepository.findOne({
+      where: { id: fileId, userId, isTrashed: false, uploadStatus: UploadStatus.ACTIVE },
+    });
+    if (!original) throw new NotFoundException('Original file not found');
+
+    // Verify storage quota
+    const { usedBytes, quotaBytes } = await this.getUserStorageUsage(userId);
+    if (usedBytes + original.sizeBytes > quotaBytes) {
+      throw new BadRequestException('Cannot copy file. Storage limit of 500 MB exceeded.');
+    }
+
+    const newFileId = crypto.randomUUID();
+    const ext = original.fileName.includes('.') ? original.fileName.split('.').pop() : '';
+    const nameWithoutExt = ext ? original.fileName.substring(0, original.fileName.lastIndexOf('.')) : original.fileName;
+    const newFileName = `Copy of ${nameWithoutExt}${ext ? '.' + ext : ''}`;
+    const newS3Key = `${userId}/${newFileId}-${newFileName}`;
+
+    // S3 Copy Object
+    await this.s3Client.send(
+      new CopyObjectCommand({
+        Bucket: this.bucketName,
+        CopySource: `${this.bucketName}/${original.s3Key}`,
+        Key: newS3Key,
+      })
+    );
+
+    const duplicate = this.filesRepository.create({
+      id: newFileId,
+      fileName: newFileName,
+      s3Key: newS3Key,
+      userId,
+      folderId: original.folderId,
+      sizeBytes: original.sizeBytes,
+      fileType: original.fileType,
+      uploadStatus: UploadStatus.ACTIVE,
+      isStarred: original.isStarred,
+      lastAccessedAt: new Date(),
+    });
+
+    await this.filesRepository.save(duplicate);
+    return { message: 'File copied successfully', file: duplicate };
   }
 }

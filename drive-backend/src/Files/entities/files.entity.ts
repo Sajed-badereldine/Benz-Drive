@@ -55,6 +55,12 @@ export class Files {
     @Column({ type: 'timestamp', nullable: true })
     trashedAt: Date | null;
 
+    @Column({ default: false })
+    isStarred: boolean;
+
+    @Column({ type: 'timestamp', nullable: true })
+    lastAccessedAt: Date | null;
+
     @CreateDateColumn()
     createdAt: Date;
 

@@ -236,4 +236,34 @@ export class FilesController {
   ) {
     return this.filesService.moveFolder(id, moveItemDto.targetFolderId || null, req.user.id);
   }
+
+  // 17. Toggle Star on File (PATCH /files/:id/star)
+  @Patch(':id/star')
+  async toggleStarFile(@Param('id') id: string, @Req() req: any) {
+    return this.filesService.toggleStarFile(id, req.user.id);
+  }
+
+  // 18. Toggle Star on Folder (PATCH /files/folders/:id/star)
+  @Patch('folders/:id/star')
+  async toggleStarFolder(@Param('id') id: string, @Req() req: any) {
+    return this.filesService.toggleStarFolder(id, req.user.id);
+  }
+
+  // 19. Get Starred Items (GET /files/starred)
+  @Get('starred')
+  async getStarredItems(@Req() req: any) {
+    return this.filesService.getStarredItems(req.user.id);
+  }
+
+  // 20. Get Recent Files (GET /files/recent)
+  @Get('recent')
+  async getRecentFiles(@Req() req: any) {
+    return this.filesService.getRecentFiles(req.user.id);
+  }
+
+  // 21. Duplicate File / Make a Copy (POST /files/:id/copy)
+  @Post(':id/copy')
+  async duplicateFile(@Param('id') id: string, @Req() req: any) {
+    return this.filesService.duplicateFile(id, req.user.id);
+  }
 }
