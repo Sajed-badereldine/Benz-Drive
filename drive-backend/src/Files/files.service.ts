@@ -135,26 +135,38 @@ export class FilesService {
     mimeType: string,
     folderId: string | null = null,
   ): Promise<{ uploadUrl: string; fileId: string }> {
-    // Enforce 500 MB total user storage quota (includes active & trashed files)
-    const { usedBytes, quotaBytes } = await this.getUserStorageUsage(userId);
+    let ownerId = userId;
+
+    if (folderId && folderId !== 'root') {
+      const folderPerm = await this.getUserPermission('folder', folderId, userId);
+      if (!folderPerm.isOwner && folderPerm.role !== 'EDITOR') {
+        throw new ForbiddenException('You do not have permission to upload into this folder');
+      }
+      ownerId = folderPerm.item.userId;
+    }
+
+    // Enforce total owner storage quota (includes active & trashed files)
+    const { usedBytes, quotaBytes } = await this.getUserStorageUsage(ownerId);
 
     if (usedBytes + fileSize > quotaBytes) {
       throw new BadRequestException(
-        'You have exceeded your total storage limit of 500 MB. Please empty your trash or delete some files to free up space.',
+        ownerId === userId
+          ? 'You have exceeded your total storage limit of 500 MB. Please free up space.'
+          : 'The folder owner has exceeded their storage quota limit.'
       );
     }
 
     const fileId = crypto.randomUUID();
     const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const s3Key = `${userId}/${fileId}-${safeFileName}`;
+    const s3Key = `${ownerId}/${fileId}-${safeFileName}`;
 
-    // Create a pending file metadata record in DB
+    // Create a pending file metadata record in DB assigned to the folder owner
     const fileMetadata = this.filesRepository.create({
       id: fileId,
       fileName: fileName,
       s3Key: s3Key,
-      userId: userId,
-      folderId: folderId,
+      userId: ownerId,
+      folderId: folderId && folderId !== 'root' ? folderId : null,
       sizeBytes: fileSize,
       fileType: this.getFileType(mimeType),
       uploadStatus: UploadStatus.PENDING,
@@ -191,8 +203,10 @@ export class FilesService {
       throw new NotFoundException('File upload record not found');
     }
 
-    if (file.userId !== userId) {
-      throw new ForbiddenException('You do not have permission to access this file');
+    // Allow owner or collaborator with permission to confirm upload
+    const perm = await this.getUserPermission('file', fileId, userId);
+    if (!perm.isOwner && perm.role !== 'EDITOR') {
+      throw new ForbiddenException('You do not have permission to confirm this upload');
     }
 
     if (file.uploadStatus !== UploadStatus.PENDING) {

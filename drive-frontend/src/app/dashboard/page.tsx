@@ -44,6 +44,7 @@ interface FileItem {
   id: string;
   fileName: string;
   s3Key: string;
+  userId?: string;
   sizeBytes: number;
   fileType: 'image' | 'video' | 'audio' | 'document' | 'other';
   createdAt: string;
@@ -54,6 +55,7 @@ interface FileItem {
 interface FolderItem {
   id: string;
   name: string;
+  userId?: string;
   parentFolderId: string | null;
   isStarred?: boolean;
   lastAccessedAt?: string;
@@ -374,6 +376,13 @@ export default function DashboardPage() {
     } catch (err: any) {
       showToast(err.message, 'error');
     }
+  };
+
+  // Helper to check if current user is owner of an item
+  const isItemOwner = (item: { userId?: string }) => {
+    if (!currentUser) return true;
+    if (!item.userId) return true;
+    return item.userId === currentUser.id;
   };
 
   // Copy Share Link
@@ -1222,10 +1231,12 @@ export default function DashboardPage() {
 
                               {activeMenuId === folder.id && (
                                 <div className={styles.dropdownMenu}>
-                                  <button onClick={() => { setActiveMenuId(null); handleOpenShareModal({ id: folder.id, name: folder.name, type: 'folder' }); }} className={styles.dropdownItem}>
-                                    <Share2 size={15} />
-                                    <span>Share</span>
-                                  </button>
+                                  {isItemOwner(folder) && (
+                                    <button onClick={() => { setActiveMenuId(null); handleOpenShareModal({ id: folder.id, name: folder.name, type: 'folder' }); }} className={styles.dropdownItem}>
+                                      <Share2 size={15} />
+                                      <span>Share</span>
+                                    </button>
+                                  )}
                                   <button onClick={() => { setActiveMenuId(null); setCurrentFolderId(folder.id); setSearchQuery(''); }} className={styles.dropdownItem}>
                                     <FolderIcon size={15} />
                                     <span>Open folder</span>
@@ -1277,13 +1288,15 @@ export default function DashboardPage() {
                             </div>
 
                             <div className={styles.fileActions}>
-                              <button
-                                onClick={() => handleOpenShareModal({ id: file.id, name: file.fileName, type: 'file' })}
-                                className={styles.actionIconBtn}
-                                title="Share File"
-                              >
-                                <Share2 size={15} />
-                              </button>
+                              {isItemOwner(file) && (
+                                <button
+                                  onClick={() => handleOpenShareModal({ id: file.id, name: file.fileName, type: 'file' })}
+                                  className={styles.actionIconBtn}
+                                  title="Share File"
+                                >
+                                  <Share2 size={15} />
+                                </button>
+                              )}
 
                               <button
                                 onClick={(e) => handleToggleStarFile(e, file.id)}
@@ -1324,10 +1337,12 @@ export default function DashboardPage() {
 
                                 {activeMenuId === file.id && (
                                   <div className={styles.dropdownMenu}>
-                                    <button onClick={() => { setActiveMenuId(null); handleOpenShareModal({ id: file.id, name: file.fileName, type: 'file' }); }} className={styles.dropdownItem}>
-                                      <Share2 size={15} />
-                                      <span>Share</span>
-                                    </button>
+                                    {isItemOwner(file) && (
+                                      <button onClick={() => { setActiveMenuId(null); handleOpenShareModal({ id: file.id, name: file.fileName, type: 'file' }); }} className={styles.dropdownItem}>
+                                        <Share2 size={15} />
+                                        <span>Share</span>
+                                      </button>
+                                    )}
                                     <button onClick={() => { setActiveMenuId(null); handleDownload(file.id, file.fileName); }} className={styles.dropdownItem}>
                                       <Download size={15} />
                                       <span>Download</span>
