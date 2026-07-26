@@ -34,7 +34,10 @@ import {
   Zap,
   Star,
   Copy,
-  MoreHorizontal
+  MoreHorizontal,
+  Share2,
+  Link,
+  X
 } from 'lucide-react';
 
 interface FileItem {
@@ -97,6 +100,18 @@ export default function DashboardPage() {
   const [trashedBreadcrumbs, setTrashedBreadcrumbs] = useState<FolderItem[]>([]);
   const [trashedFolders, setTrashedFolders] = useState<FolderItem[]>([]);
   const [trashedFiles, setTrashedFiles] = useState<FileItem[]>([]);
+
+  // Shared items states
+  const [sharedFolders, setSharedFolders] = useState<any[]>([]);
+  const [sharedFiles, setSharedFiles] = useState<any[]>([]);
+
+  // Share Modal states
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareTarget, setShareTarget] = useState<{ id: string; name: string; type: 'file' | 'folder' } | null>(null);
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareRole, setShareRole] = useState<'VIEWER' | 'EDITOR'>('VIEWER');
+  const [collaborators, setCollaborators] = useState<any[]>([]);
+  const [shareLoading, setShareLoading] = useState(false);
 
   // Search & Dialog UI states
   const [searchQuery, setSearchQuery] = useState('');
@@ -177,6 +192,8 @@ export default function DashboardPage() {
       fetchStarredItems();
     } else if (activeTab === 'recent') {
       fetchRecentFiles();
+    } else if (activeTab === 'shared') {
+      fetchSharedItems();
     } else if (activeTab === 'trash') {
       fetchTrashedItems();
     }
@@ -273,6 +290,105 @@ export default function DashboardPage() {
       showToast(err.message, 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch items shared with the user
+  const fetchSharedItems = async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch('/files/shares/shared-with-me');
+      setSharedFolders(data.folders || []);
+      setSharedFiles(data.files || []);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Open Share Modal
+  const handleOpenShareModal = async (item: { id: string; name: string; type: 'file' | 'folder' }) => {
+    setShareTarget(item);
+    setShowShareModal(true);
+    setShareEmail('');
+    setShareRole('VIEWER');
+    setShareLoading(true);
+    try {
+      const data = await apiFetch(`/files/shares/item/${item.type}/${item.id}`);
+      setCollaborators(data || []);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  // Submit Share Item
+  const handleShareSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!shareTarget || !shareEmail.trim()) return;
+
+    setShareLoading(true);
+    try {
+      await apiFetch('/files/shares', {
+        method: 'POST',
+        body: JSON.stringify({
+          itemId: shareTarget.id,
+          itemType: shareTarget.type,
+          email: shareEmail.trim(),
+          role: shareRole,
+        }),
+      });
+      showToast(`Shared "${shareTarget.name}" with ${shareEmail.trim()}`, 'success');
+      setShareEmail('');
+      const data = await apiFetch(`/files/shares/item/${shareTarget.type}/${shareTarget.id}`);
+      setCollaborators(data || []);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  // Update Collaborator Role
+  const handleUpdateShareRole = async (shareId: string, role: 'VIEWER' | 'EDITOR') => {
+    try {
+      await apiFetch(`/files/shares/${shareId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+      });
+      showToast('Permissions updated', 'success');
+      setCollaborators(collaborators.map((c) => (c.id === shareId ? { ...c, role } : c)));
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Revoke Share
+  const handleRevokeShare = async (shareId: string) => {
+    try {
+      await apiFetch(`/files/shares/${shareId}`, { method: 'DELETE' });
+      showToast('Collaborator access revoked', 'success');
+      setCollaborators(collaborators.filter((c) => c.id !== shareId));
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Copy Share Link
+  const handleCopyShareLink = async () => {
+    if (!shareTarget) return;
+    try {
+      const data = await apiFetch('/files/shares/link', {
+        method: 'POST',
+        body: JSON.stringify({ itemId: shareTarget.id, itemType: shareTarget.type }),
+      });
+      const fullUrl = `${window.location.origin}${data.linkUrl}`;
+      await navigator.clipboard.writeText(fullUrl);
+      showToast('Share link copied to clipboard!', 'success');
+    } catch (err: any) {
+      showToast(err.message, 'error');
     }
   };
 
@@ -1106,6 +1222,10 @@ export default function DashboardPage() {
 
                               {activeMenuId === folder.id && (
                                 <div className={styles.dropdownMenu}>
+                                  <button onClick={() => { setActiveMenuId(null); handleOpenShareModal({ id: folder.id, name: folder.name, type: 'folder' }); }} className={styles.dropdownItem}>
+                                    <Share2 size={15} />
+                                    <span>Share</span>
+                                  </button>
                                   <button onClick={() => { setActiveMenuId(null); setCurrentFolderId(folder.id); setSearchQuery(''); }} className={styles.dropdownItem}>
                                     <FolderIcon size={15} />
                                     <span>Open folder</span>
@@ -1158,6 +1278,14 @@ export default function DashboardPage() {
 
                             <div className={styles.fileActions}>
                               <button
+                                onClick={() => handleOpenShareModal({ id: file.id, name: file.fileName, type: 'file' })}
+                                className={styles.actionIconBtn}
+                                title="Share File"
+                              >
+                                <Share2 size={15} />
+                              </button>
+
+                              <button
                                 onClick={(e) => handleToggleStarFile(e, file.id)}
                                 className={styles.actionIconBtn}
                                 title={file.isStarred ? 'Unstar File' : 'Star File'}
@@ -1196,6 +1324,10 @@ export default function DashboardPage() {
 
                                 {activeMenuId === file.id && (
                                   <div className={styles.dropdownMenu}>
+                                    <button onClick={() => { setActiveMenuId(null); handleOpenShareModal({ id: file.id, name: file.fileName, type: 'file' }); }} className={styles.dropdownItem}>
+                                      <Share2 size={15} />
+                                      <span>Share</span>
+                                    </button>
                                     <button onClick={() => { setActiveMenuId(null); handleDownload(file.id, file.fileName); }} className={styles.dropdownItem}>
                                       <Download size={15} />
                                       <span>Download</span>
@@ -1579,11 +1711,82 @@ export default function DashboardPage() {
             </div>
 
             <div className={styles.contentArea}>
-              <div className={styles.emptyState}>
-                <Users size={44} style={{ opacity: 0.3, color: '#0077be' }} />
-                <p style={{ fontWeight: 600 }}>Shared with Me</p>
-                <span style={{ fontSize: '13px', opacity: 0.7 }}>Files and folders shared with your account will appear here.</span>
-              </div>
+              {loading ? (
+                <div style={{ textAlign: 'center', marginTop: '40px', opacity: 0.7 }}>Loading shared items...</div>
+              ) : (
+                <>
+                  {sharedFolders.length === 0 && sharedFiles.length === 0 && (
+                    <div className={styles.emptyState}>
+                      <Users size={44} style={{ opacity: 0.3, color: '#0077be' }} />
+                      <p style={{ fontWeight: 600 }}>No Shared Items</p>
+                      <span style={{ fontSize: '13px', opacity: 0.7 }}>Files and folders shared with your account will appear here.</span>
+                    </div>
+                  )}
+
+                  {/* Shared Folders */}
+                  {sharedFolders.length > 0 && (
+                    <div>
+                      <h3 className={styles.sectionTitle}>Shared Folders</h3>
+                      <div className={styles.folderGrid}>
+                        {sharedFolders.map((folder) => (
+                          <div
+                            key={folder.id}
+                            onDoubleClick={() => {
+                              setActiveTab('drive');
+                              setCurrentFolderId(folder.id);
+                            }}
+                            className={styles.folderCard}
+                          >
+                            <FolderIcon size={20} style={{ color: '#0077be', flexShrink: 0 }} />
+                            <div style={{ minWidth: 0, flexGrow: 1 }}>
+                              <span className={styles.folderName} title={folder.name}>{folder.name}</span>
+                              <p style={{ fontSize: '11px', color: '#707882', margin: '2px 0 0' }}>
+                                Shared by {folder.sharedBy?.username || folder.sharedBy?.email} • <span style={{ fontWeight: 600, color: '#0077be' }}>{folder.shareRole}</span>
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Shared Files */}
+                  {sharedFiles.length > 0 && (
+                    <div className={styles.filesSection}>
+                      <h3 className={styles.sectionTitle}>Shared Files</h3>
+                      <div className={styles.fileList}>
+                        {sharedFiles.map((file) => (
+                          <div key={file.id} className={styles.fileRow}>
+                            <div className={styles.fileInfo}>
+                              {getFileIcon(file.fileType)}
+                              <div>
+                                <span className={styles.fileName}>{file.fileName}</span>
+                                <p style={{ fontSize: '11px', color: '#707882', margin: 0 }}>
+                                  Shared by {file.sharedBy?.username || file.sharedBy?.email} • <span style={{ fontWeight: 600, color: '#0077be' }}>{file.shareRole}</span>
+                                </p>
+                              </div>
+                            </div>
+                            
+                            <div className={styles.fileMeta}>
+                              <span>{formatBytes(file.sizeBytes)}</span>
+                            </div>
+
+                            <div className={styles.fileActions}>
+                              <button
+                                onClick={() => handleDownload(file.id, file.fileName)}
+                                className={styles.actionIconBtn}
+                                title="Download File"
+                              >
+                                <Download size={15} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </>
         )}
@@ -1691,6 +1894,111 @@ export default function DashboardPage() {
                   }}
                 >
                   Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Share Modal Overlay */}
+        {showShareModal && shareTarget && (
+          <div className={styles.modalOverlay} onClick={() => setShowShareModal(false)}>
+            <div className={`glass-panel ${styles.modalContent}`} style={{ maxWidth: '520px' }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <h3 className={styles.modalTitle} style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                  <Share2 size={20} style={{ color: '#0077be' }} />
+                  Share &ldquo;{shareTarget.name}&rdquo;
+                </h3>
+                <button onClick={() => setShowShareModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#707882' }}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleShareSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="email"
+                    placeholder="Add people by email..."
+                    value={shareEmail}
+                    onChange={(e) => setShareEmail(e.target.value)}
+                    className={styles.searchInput}
+                    style={{ flexGrow: 1, paddingLeft: '14px' }}
+                    required
+                  />
+                  <select
+                    value={shareRole}
+                    onChange={(e) => setShareRole(e.target.value as any)}
+                    className={styles.searchInput}
+                    style={{ width: '110px', paddingLeft: '10px' }}
+                  >
+                    <option value="VIEWER">Viewer</option>
+                    <option value="EDITOR">Editor</option>
+                  </select>
+                  <button type="submit" disabled={shareLoading} className={styles.newFolderBtn} style={{ margin: 0 }}>
+                    Share
+                  </button>
+                </div>
+              </form>
+
+              <div style={{ marginTop: '24px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#707882', marginBottom: '12px' }}>
+                  People with access
+                </h4>
+
+                {shareLoading && collaborators.length === 0 ? (
+                  <div style={{ fontSize: '13px', opacity: 0.7, padding: '12px 0' }}>Loading collaborators...</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '180px', overflowY: 'auto' }}>
+                    {collaborators.length === 0 ? (
+                      <div style={{ fontSize: '13px', color: '#707882', fontStyle: 'italic' }}>
+                        Not shared directly with anyone yet.
+                      </div>
+                    ) : (
+                      collaborators.map((c) => (
+                        <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(0,0,0,0.03)', borderRadius: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div className={styles.avatar} style={{ width: '32px', height: '32px', fontSize: '12px' }}>
+                              {(c.grantee?.username || 'U').charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p style={{ fontSize: '13px', fontWeight: 600, margin: 0 }}>{c.grantee?.username || 'User'}</p>
+                              <p style={{ fontSize: '11px', color: '#707882', margin: 0 }}>{c.grantee?.email}</p>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <select
+                              value={c.role}
+                              onChange={(e) => handleUpdateShareRole(c.id, e.target.value as any)}
+                              style={{ fontSize: '12px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                            >
+                              <option value="VIEWER">Viewer</option>
+                              <option value="EDITOR">Editor</option>
+                            </select>
+
+                            <button
+                              onClick={() => handleRevokeShare(c.id)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ba1a1a', padding: '4px' }}
+                              title="Remove access"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <button onClick={handleCopyShareLink} className={styles.newFolderBtn} style={{ background: 'rgba(0,119,190,0.1)', color: '#0077be', margin: 0 }}>
+                  <Link size={15} />
+                  <span>Copy share link</span>
+                </button>
+
+                <button onClick={() => setShowShareModal(false)} className={styles.cancelBtn}>
+                  Done
                 </button>
               </div>
             </div>

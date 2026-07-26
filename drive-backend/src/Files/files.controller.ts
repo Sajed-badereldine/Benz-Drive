@@ -4,6 +4,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { FilesService } from './files.service';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { MoveItemDto } from './dto/move-item.dto';
+import { ShareItemDto } from './dto/share-item.dto';
 import type { Response } from 'express';
 
 @Controller('files')
@@ -265,5 +266,63 @@ export class FilesController {
   @Post(':id/copy')
   async duplicateFile(@Param('id') id: string, @Req() req: any) {
     return this.filesService.duplicateFile(id, req.user.id);
+  }
+
+  // ----------------------------------------------------
+  // SHARING ENDPOINTS
+  // ----------------------------------------------------
+
+  // Share an item with a user by email (POST /files/shares)
+  @Post('shares')
+  async shareItem(@Body() shareDto: ShareItemDto, @Req() req: any) {
+    return this.filesService.shareItem(shareDto, req.user.id);
+  }
+
+  // Get all collaborators for an item (GET /files/shares/item/:itemType/:itemId)
+  @Get('shares/item/:itemType/:itemId')
+  async getItemShares(
+    @Param('itemType') itemType: 'file' | 'folder',
+    @Param('itemId') itemId: string,
+    @Req() req: any,
+  ) {
+    return this.filesService.getItemShares(itemType, itemId, req.user.id);
+  }
+
+  // Update a collaborator's role (PATCH /files/shares/:shareId)
+  @Patch('shares/:shareId')
+  async updateShareRole(
+    @Param('shareId') shareId: string,
+    @Body('role') role: any,
+    @Req() req: any,
+  ) {
+    return this.filesService.updateShareRole(shareId, role, req.user.id);
+  }
+
+  // Revoke a share (DELETE /files/shares/:shareId)
+  @Delete('shares/:shareId')
+  async revokeShare(@Param('shareId') shareId: string, @Req() req: any) {
+    return this.filesService.revokeShare(shareId, req.user.id);
+  }
+
+  // Get items shared with the logged-in user (GET /files/shares/shared-with-me)
+  @Get('shares/shared-with-me')
+  async getSharedWithMe(@Req() req: any) {
+    return this.filesService.getSharedWithMe(req.user.id);
+  }
+
+  // Generate or retrieve a public share link token (POST /files/shares/link)
+  @Post('shares/link')
+  async createShareLink(
+    @Body('itemType') itemType: 'file' | 'folder',
+    @Body('itemId') itemId: string,
+    @Req() req: any,
+  ) {
+    return this.filesService.createShareLink(itemType, itemId, req.user.id);
+  }
+
+  // Access a shared item via link token (GET /files/shares/access-link/:token)
+  @Get('shares/access-link/:token')
+  async accessShareLink(@Param('token') token: string, @Req() req: any) {
+    return this.filesService.accessShareLink(token, req.user.id);
   }
 }

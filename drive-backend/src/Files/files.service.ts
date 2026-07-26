@@ -3,7 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, ILike } from 'typeorm';
 import { Files, UploadStatus, FileType } from './entities/files.entity';
 import { Folder } from './entities/folder.entity';
+import { Share, ShareRole } from './entities/share.entity';
+import { User } from '../users/entities/user.entity';
 import { CreateFolderDto } from './dto/create-folder.dto';
+import { ShareItemDto } from './dto/share-item.dto';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -19,6 +22,10 @@ export class FilesService {
     private readonly filesRepository: Repository<Files>,
     @InjectRepository(Folder)
     private readonly folderRepository: Repository<Folder>,
+    @InjectRepository(Share)
+    private readonly shareRepository: Repository<Share>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly configService: ConfigService,
   ) {
     this.bucketName = this.configService.get<string>('aws.bucketName')!;
@@ -66,15 +73,29 @@ export class FilesService {
 
   // 1. Upload file to S3 and save metadata in DB
   async uploadFile(file: Express.Multer.File, userId: string, folderId: string | null = null): Promise<Files> {
-    // Enforce 500 MB total user storage quota (includes active & trashed files)
-    const { usedBytes, quotaBytes } = await this.getUserStorageUsage(userId);
+    let ownerId = userId;
+
+    if (folderId && folderId !== 'root') {
+      const folderPerm = await this.getUserPermission('folder', folderId, userId);
+      if (!folderPerm.isOwner && folderPerm.role !== 'EDITOR') {
+        throw new ForbiddenException('You do not have permission to upload into this folder');
+      }
+      ownerId = folderPerm.item.userId;
+    }
+
+    // Enforce 500 MB total owner storage quota
+    const { usedBytes, quotaBytes } = await this.getUserStorageUsage(ownerId);
 
     if (usedBytes + file.size > quotaBytes) {
-      throw new BadRequestException('You have exceeded your total storage limit of 500 MB. Please empty your trash or delete some files to free up space.');
+      throw new BadRequestException(
+        ownerId === userId
+          ? 'You have exceeded your total storage limit of 500 MB. Please free up space.'
+          : 'The folder owner has exceeded their storage quota limit.'
+      );
     }
 
     const fileId = crypto.randomUUID();
-    const s3Key = `${userId}/${fileId}-${file.originalname}`;
+    const s3Key = `${ownerId}/${fileId}-${file.originalname}`;
 
     // Upload payload command to S3
     const command = new PutObjectCommand({
@@ -92,8 +113,8 @@ export class FilesService {
         id: fileId,
         fileName: file.originalname,
         s3Key: s3Key,
-        userId: userId,
-        folderId: folderId,
+        userId: ownerId,
+        folderId: folderId && folderId !== 'root' ? folderId : null,
         sizeBytes: file.size,
         fileType: this.getFileType(file.mimetype),
         uploadStatus: UploadStatus.ACTIVE,
@@ -191,17 +212,15 @@ export class FilesService {
     });
   }
 
-  // 3. Get file metadata (with owner access validation)
+  // 3. Get file metadata (with owner & collaborator access validation)
   async getFileMetadata(fileId: string, userId: string, includeTrashed = false): Promise<Files> {
-    const file = await this.filesRepository.findOne({ where: { id: fileId } });
+    const perm = await this.getUserPermission('file', fileId, userId);
 
-    if (!file) {
-      throw new NotFoundException('File not found');
-    }
-
-    if (file.userId !== userId) {
+    if (!perm.isOwner && !perm.role) {
       throw new ForbiddenException('You do not have permission to access this file');
     }
+
+    const file = perm.item as Files;
 
     if (!includeTrashed && file.isTrashed) {
       throw new BadRequestException('File is in the trash bin');
@@ -325,20 +344,21 @@ export class FilesService {
   async getFolderContents(folderId: string | null, userId: string) {
     let currentFolder: Folder | null = null;
     const isRoot = !folderId || folderId === 'root';
+    let folderOwnerId = userId;
 
     if (!isRoot) {
-      currentFolder = await this.folderRepository.findOne({
-        where: { id: folderId!, userId, isTrashed: false },
-      });
-      if (!currentFolder) {
+      const folderPerm = await this.getUserPermission('folder', folderId!, userId);
+      if (!folderPerm.isOwner && !folderPerm.role) {
         throw new NotFoundException('Folder not found');
       }
+      currentFolder = folderPerm.item as Folder;
+      folderOwnerId = currentFolder.userId;
     }
 
     // Fetch folders in this directory
     const folders = await this.folderRepository.find({
       where: {
-        userId,
+        userId: folderOwnerId,
         parentFolderId: isRoot ? IsNull() : folderId,
         isTrashed: false,
       },
@@ -348,7 +368,7 @@ export class FilesService {
     // Fetch files in this directory
     const files = await this.filesRepository.find({
       where: {
-        userId,
+        userId: folderOwnerId,
         folderId: isRoot ? IsNull() : folderId,
         isTrashed: false,
         uploadStatus: UploadStatus.ACTIVE,
@@ -815,5 +835,254 @@ export class FilesService {
 
     await this.filesRepository.save(duplicate);
     return { message: 'File copied successfully', file: duplicate };
+  }
+
+  // ----------------------------------------------------
+  // SHARING & OBJECT-LEVEL AUTHORIZATION METHODS
+  // ----------------------------------------------------
+
+  // Check user permission on an item (handles ownership + direct shares + parent folder inheritance)
+  async getUserPermission(
+    itemType: 'file' | 'folder',
+    itemId: string,
+    userId: string,
+  ): Promise<{ isOwner: boolean; role: 'OWNER' | 'VIEWER' | 'EDITOR' | null; item: any }> {
+    if (itemType === 'file') {
+      const file = await this.filesRepository.findOne({ where: { id: itemId } });
+      if (!file) throw new NotFoundException('File not found');
+
+      if (file.userId === userId) {
+        return { isOwner: true, role: 'OWNER', item: file };
+      }
+
+      // Check direct share
+      const directShare = await this.shareRepository.findOne({
+        where: { fileId: itemId, granteeId: userId },
+      });
+      if (directShare) {
+        return { isOwner: false, role: directShare.role as any, item: file };
+      }
+
+      // Check inherited share via parent folder chain
+      let currentFolderId = file.folderId;
+      while (currentFolderId) {
+        const folderShare = await this.shareRepository.findOne({
+          where: { folderId: currentFolderId, granteeId: userId },
+        });
+        if (folderShare) {
+          return { isOwner: false, role: folderShare.role as any, item: file };
+        }
+
+        const parentFolder = await this.folderRepository.findOne({ where: { id: currentFolderId } });
+        currentFolderId = parentFolder?.parentFolderId || null;
+      }
+
+      return { isOwner: false, role: null, item: file };
+    } else {
+      const folder = await this.folderRepository.findOne({ where: { id: itemId } });
+      if (!folder) throw new NotFoundException('Folder not found');
+
+      if (folder.userId === userId) {
+        return { isOwner: true, role: 'OWNER', item: folder };
+      }
+
+      // Check direct share
+      const directShare = await this.shareRepository.findOne({
+        where: { folderId: itemId, granteeId: userId },
+      });
+      if (directShare) {
+        return { isOwner: false, role: directShare.role as any, item: folder };
+      }
+
+      // Check inherited share via parent folder chain
+      let currentFolderId = folder.parentFolderId;
+      while (currentFolderId) {
+        const parentShare = await this.shareRepository.findOne({
+          where: { folderId: currentFolderId, granteeId: userId },
+        });
+        if (parentShare) {
+          return { isOwner: false, role: parentShare.role as any, item: folder };
+        }
+
+        const parentFolder = await this.folderRepository.findOne({ where: { id: currentFolderId } });
+        currentFolderId = parentFolder?.parentFolderId || null;
+      }
+
+      return { isOwner: false, role: null, item: folder };
+    }
+  }
+
+  // Share an item with a user by email
+  async shareItem(shareDto: ShareItemDto, ownerId: string) {
+    const { itemId, itemType, email, role = ShareRole.VIEWER } = shareDto;
+
+    const perm = await this.getUserPermission(itemType, itemId, ownerId);
+    if (!perm.isOwner) {
+      throw new ForbiddenException('Only the owner can manage sharing permissions for this item');
+    }
+
+    const grantee = await this.userRepository.findOne({ where: { email: email.toLowerCase().trim() } });
+    if (!grantee) {
+      throw new NotFoundException(`No registered user found with email: ${email}`);
+    }
+
+    if (grantee.id === ownerId) {
+      throw new BadRequestException('You cannot share an item with yourself');
+    }
+
+    let share = await this.shareRepository.findOne({
+      where: itemType === 'file'
+        ? { fileId: itemId, granteeId: grantee.id }
+        : { folderId: itemId, granteeId: grantee.id },
+    });
+
+    if (share) {
+      share.role = role;
+    } else {
+      share = this.shareRepository.create({
+        ownerId,
+        granteeId: grantee.id,
+        fileId: itemType === 'file' ? itemId : null,
+        folderId: itemType === 'folder' ? itemId : null,
+        role,
+      });
+    }
+
+    await this.shareRepository.save(share);
+    return { message: `Successfully shared with ${grantee.email}`, share };
+  }
+
+  // Get all active shares for a file/folder
+  async getItemShares(itemType: 'file' | 'folder', itemId: string, ownerId: string) {
+    const perm = await this.getUserPermission(itemType, itemId, ownerId);
+    if (!perm.isOwner && perm.role !== 'EDITOR') {
+      throw new ForbiddenException('You do not have permission to view sharing options for this item');
+    }
+
+    const shares = await this.shareRepository.find({
+      where: itemType === 'file' ? { fileId: itemId } : { folderId: itemId },
+      relations: { grantee: true, owner: true },
+    });
+
+    return shares.map((s) => ({
+      id: s.id,
+      role: s.role,
+      shareToken: s.shareToken,
+      createdAt: s.createdAt,
+      grantee: s.grantee
+        ? { id: s.grantee.id, username: s.grantee.username, email: s.grantee.email }
+        : null,
+      owner: { id: s.owner.id, username: s.owner.username, email: s.owner.email },
+    }));
+  }
+
+  // Update a collaborator's role
+  async updateShareRole(shareId: string, role: ShareRole, ownerId: string) {
+    const share = await this.shareRepository.findOne({ where: { id: shareId, ownerId } });
+    if (!share) {
+      throw new NotFoundException('Share record not found or you are not the owner');
+    }
+
+    share.role = role;
+    await this.shareRepository.save(share);
+    return { message: 'Permissions updated successfully', share };
+  }
+
+  // Revoke a share
+  async revokeShare(shareId: string, ownerId: string) {
+    const share = await this.shareRepository.findOne({ where: { id: shareId, ownerId } });
+    if (!share) {
+      throw new NotFoundException('Share record not found or you are not the owner');
+    }
+
+    await this.shareRepository.remove(share);
+    return { message: 'Access revoked successfully' };
+  }
+
+  // Get items shared with the logged in user
+  async getSharedWithMe(granteeId: string) {
+    const shares = await this.shareRepository.find({
+      where: { granteeId },
+      relations: { file: true, folder: true, owner: true },
+      order: { createdAt: 'DESC' },
+    });
+
+    const files = shares
+      .filter((s) => s.file && !s.file.isTrashed && s.file.uploadStatus === UploadStatus.ACTIVE)
+      .map((s) => ({
+        ...s.file,
+        shareRole: s.role,
+        sharedBy: { id: s.owner.id, username: s.owner.username, email: s.owner.email },
+      }));
+
+    const folders = shares
+      .filter((s) => s.folder && !s.folder.isTrashed)
+      .map((s) => ({
+        ...s.folder,
+        shareRole: s.role,
+        sharedBy: { id: s.owner.id, username: s.owner.username, email: s.owner.email },
+      }));
+
+    return { files, folders };
+  }
+
+  // Create or retrieve public share link token
+  async createShareLink(itemType: 'file' | 'folder', itemId: string, ownerId: string) {
+    const perm = await this.getUserPermission(itemType, itemId, ownerId);
+    if (!perm.isOwner) {
+      throw new ForbiddenException('Only the owner can create a shareable link');
+    }
+
+    let share = await this.shareRepository.findOne({
+      where: itemType === 'file'
+        ? { fileId: itemId, granteeId: IsNull() }
+        : { folderId: itemId, granteeId: IsNull() },
+    });
+
+    if (!share) {
+      const shareToken = crypto.randomBytes(16).toString('hex');
+      share = this.shareRepository.create({
+        ownerId,
+        fileId: itemType === 'file' ? itemId : null,
+        folderId: itemType === 'folder' ? itemId : null,
+        role: ShareRole.VIEWER,
+        shareToken,
+      });
+      await this.shareRepository.save(share);
+    }
+
+    return { shareToken: share.shareToken, linkUrl: `/share/${share.shareToken}` };
+  }
+
+  // Access an item via link token (claims access for logged in user)
+  async accessShareLink(shareToken: string, granteeId: string) {
+    const share = await this.shareRepository.findOne({
+      where: { shareToken },
+      relations: { file: true, folder: true },
+    });
+
+    if (!share) {
+      throw new NotFoundException('Invalid or expired share link');
+    }
+
+    // Link share to user if not already linked
+    if (!share.granteeId && share.ownerId !== granteeId) {
+      const userShare = this.shareRepository.create({
+        ownerId: share.ownerId,
+        granteeId,
+        fileId: share.fileId,
+        folderId: share.folderId,
+        role: share.role,
+      });
+      await this.shareRepository.save(userShare);
+    }
+
+    return {
+      itemType: share.fileId ? 'file' : 'folder',
+      itemId: share.fileId || share.folderId,
+      role: share.role,
+      file: share.file,
+      folder: share.folder,
+    };
   }
 }
