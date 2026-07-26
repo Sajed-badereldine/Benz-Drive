@@ -964,16 +964,19 @@ export class FilesService {
       relations: { grantee: true, owner: true },
     });
 
-    return shares.map((s) => ({
-      id: s.id,
-      role: s.role,
-      shareToken: s.shareToken,
-      createdAt: s.createdAt,
-      grantee: s.grantee
-        ? { id: s.grantee.id, username: s.grantee.username, email: s.grantee.email }
-        : null,
-      owner: { id: s.owner.id, username: s.owner.username, email: s.owner.email },
-    }));
+    // Filter out null grantee link records so anonymous/blank users are never listed
+    return shares
+      .filter((s) => s.granteeId !== null)
+      .map((s) => ({
+        id: s.id,
+        role: s.role,
+        shareToken: s.shareToken,
+        createdAt: s.createdAt,
+        grantee: s.grantee
+          ? { id: s.grantee.id, username: s.grantee.username, email: s.grantee.email }
+          : null,
+        owner: { id: s.owner.id, username: s.owner.username, email: s.owner.email },
+      }));
   }
 
   // Update a collaborator's role
@@ -1007,23 +1010,33 @@ export class FilesService {
       order: { createdAt: 'DESC' },
     });
 
-    const files = shares
+    const fileMap = new Map();
+    shares
       .filter((s) => s.file && !s.file.isTrashed && s.file.uploadStatus === UploadStatus.ACTIVE)
-      .map((s) => ({
-        ...s.file,
-        shareRole: s.role,
-        sharedBy: { id: s.owner.id, username: s.owner.username, email: s.owner.email },
-      }));
+      .forEach((s) => {
+        if (!fileMap.has(s.file!.id)) {
+          fileMap.set(s.file!.id, {
+            ...s.file,
+            shareRole: s.role,
+            sharedBy: { id: s.owner.id, username: s.owner.username, email: s.owner.email },
+          });
+        }
+      });
 
-    const folders = shares
+    const folderMap = new Map();
+    shares
       .filter((s) => s.folder && !s.folder.isTrashed)
-      .map((s) => ({
-        ...s.folder,
-        shareRole: s.role,
-        sharedBy: { id: s.owner.id, username: s.owner.username, email: s.owner.email },
-      }));
+      .forEach((s) => {
+        if (!folderMap.has(s.folder!.id)) {
+          folderMap.set(s.folder!.id, {
+            ...s.folder,
+            shareRole: s.role,
+            sharedBy: { id: s.owner.id, username: s.owner.username, email: s.owner.email },
+          });
+        }
+      });
 
-    return { files, folders };
+    return { files: Array.from(fileMap.values()), folders: Array.from(folderMap.values()) };
   }
 
   // Create or retrieve public share link token
@@ -1065,16 +1078,24 @@ export class FilesService {
       throw new NotFoundException('Invalid or expired share link');
     }
 
-    // Link share to user if not already linked
-    if (!share.granteeId && share.ownerId !== granteeId) {
-      const userShare = this.shareRepository.create({
-        ownerId: share.ownerId,
-        granteeId,
-        fileId: share.fileId,
-        folderId: share.folderId,
-        role: share.role,
+    // Link share to user if not already linked and no existing share record for this user
+    if (share.ownerId !== granteeId) {
+      const existingShare = await this.shareRepository.findOne({
+        where: share.fileId
+          ? { fileId: share.fileId, granteeId }
+          : { folderId: share.folderId!, granteeId },
       });
-      await this.shareRepository.save(userShare);
+
+      if (!existingShare) {
+        const userShare = this.shareRepository.create({
+          ownerId: share.ownerId,
+          granteeId,
+          fileId: share.fileId,
+          folderId: share.folderId,
+          role: share.role,
+        });
+        await this.shareRepository.save(userShare);
+      }
     }
 
     return {
