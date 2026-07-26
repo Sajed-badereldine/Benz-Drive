@@ -19,6 +19,8 @@ export async function apiFetch(path: string, options: FetchOptions = {}) {
       // For FormData, let the browser set the boundary header automatically
       body = options.bodyData;
     }
+  } else if (typeof body === 'string' && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
   }
 
   const finalOptions: RequestInit = {
