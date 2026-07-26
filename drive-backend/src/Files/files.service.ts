@@ -281,21 +281,21 @@ export class FilesService {
   // 6. Create Folder
   async createFolder(createFolderDto: CreateFolderDto, userId: string): Promise<Folder> {
     const { name, parentFolderId } = createFolderDto;
+    let folderOwnerId = userId;
 
-    // If parentFolderId is provided, verify it exists and belongs to the user
-    if (parentFolderId) {
-      const parentFolder = await this.folderRepository.findOne({
-        where: { id: parentFolderId, userId, isTrashed: false },
-      });
-      if (!parentFolder) {
-        throw new NotFoundException('Parent folder not found');
+    // If parentFolderId is provided, verify user is owner or editor
+    if (parentFolderId && parentFolderId !== 'root') {
+      const parentPerm = await this.getUserPermission('folder', parentFolderId, userId);
+      if (!parentPerm.isOwner && parentPerm.role !== 'EDITOR') {
+        throw new ForbiddenException('You do not have permission to create a folder here');
       }
+      folderOwnerId = parentPerm.item.userId;
     }
 
     const folder = this.folderRepository.create({
       name,
-      userId,
-      parentFolderId: parentFolderId || null,
+      userId: folderOwnerId,
+      parentFolderId: parentFolderId && parentFolderId !== 'root' ? parentFolderId : null,
     });
 
     return await this.folderRepository.save(folder);
@@ -318,7 +318,6 @@ export class FilesService {
       let folder = await this.folderRepository.findOne({
         where: {
           name: cleanSegment,
-          userId,
           parentFolderId: currentParentId === null ? IsNull() : currentParentId,
           isTrashed: false,
         },
@@ -326,12 +325,7 @@ export class FilesService {
 
       // If it doesn't exist, create it
       if (!folder) {
-        folder = this.folderRepository.create({
-          name: cleanSegment,
-          userId,
-          parentFolderId: currentParentId,
-        });
-        folder = await this.folderRepository.save(folder);
+        folder = await this.createFolder({ name: cleanSegment, parentFolderId: currentParentId || undefined }, userId);
       }
 
       currentParentId = folder.id;
@@ -388,11 +382,10 @@ export class FilesService {
     const breadcrumbs: Folder[] = [];
     let currentId: string | null = folderId;
 
-    while (currentId) {
-      const folder = await this.folderRepository.findOne({
-        where: { id: currentId, userId, isTrashed: false },
-      });
-      if (!folder) break;
+    while (currentId && currentId !== 'root') {
+      const perm = await this.getUserPermission('folder', currentId, userId);
+      if (!perm.isOwner && !perm.role) break;
+      const folder = perm.item as Folder;
       breadcrumbs.unshift(folder);
       currentId = folder.parentFolderId;
     }
