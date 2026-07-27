@@ -56,7 +56,7 @@ function ResetPasswordComponent() {
     try {
       const response = await apiFetch(`/auth/reset-password?token=${token}`, {
         method: 'POST',
-        bodyData: { password },
+        bodyData: { password, confirmPassword },
       });
 
       showToast(response.message || 'Password reset successful!', 'success');

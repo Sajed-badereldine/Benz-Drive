@@ -56,7 +56,7 @@ export default function SignUpPage() {
     try {
       const response = await apiFetch('/auth/signup', {
         method: 'POST',
-        bodyData: { username, email, password },
+        bodyData: { username, email, password, confirmPassword },
       });
 
       showToast(response.message || 'Registration successful! Verification email sent.', 'success');
