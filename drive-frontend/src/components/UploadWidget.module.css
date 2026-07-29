@@ -3,13 +3,15 @@
   bottom: 24px;
   right: 24px;
   width: 360px;
-  background: #232731;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid #cbd5e1;
   border-radius: 16px;
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 12px 32px -8px rgba(0, 94, 151, 0.18);
   z-index: 1000;
   overflow: hidden;
-  color: #f1f5f9;
+  color: #1b1c1c;
   font-family: inherit;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -19,17 +21,17 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px;
-  background: transparent;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 119, 190, 0.05);
+  border-bottom: 1px solid #e2e8f0;
   cursor: pointer;
   user-select: none;
 }
 
 .widgetTitle {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.01em;
-  color: #ffffff;
+  color: #1b1c1c;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -38,13 +40,13 @@
 .headerActions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .iconBtn {
   background: transparent;
   border: none;
-  color: #94a3b8;
+  color: #707882;
   cursor: pointer;
   padding: 4px;
   border-radius: 6px;
@@ -55,8 +57,8 @@
 }
 
 .iconBtn:hover {
-  color: #ffffff;
-  background-color: rgba(255, 255, 255, 0.1);
+  color: #0077be;
+  background-color: rgba(0, 119, 190, 0.08);
 }
 
 .itemList {
@@ -65,6 +67,7 @@
   display: flex;
   flex-direction: column;
   padding: 4px 0;
+  background: #ffffff;
 }
 
 .itemRow {
@@ -73,7 +76,7 @@
   justify-content: space-between;
   padding: 12px 18px;
   gap: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .itemRow:last-child {
@@ -92,7 +95,7 @@
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: rgba(0, 119, 190, 0.2);
+  background: rgba(0, 119, 190, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -101,8 +104,8 @@
 
 .itemName {
   font-size: 13px;
-  font-weight: 500;
-  color: #f1f5f9;
+  font-weight: 600;
+  color: #1b1c1c;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -110,7 +113,7 @@
 
 .itemMeta {
   font-size: 11px;
-  color: #94a3b8;
+  color: #707882;
   margin-top: 2px;
 }
 
@@ -137,12 +140,12 @@
 }
 
 .progressRingCircleBg {
-  stroke: rgba(255, 255, 255, 0.1);
+  stroke: #e2e8f0;
   stroke-width: 3;
 }
 
 .progressRingCircleFg {
-  stroke: #38bdf8;
+  stroke: #0077be;
   stroke-width: 3;
   stroke-linecap: round;
   transition: stroke-dashoffset 0.2s ease;
@@ -152,11 +155,11 @@
   position: absolute;
   font-size: 9px;
   font-weight: 700;
-  color: #38bdf8;
+  color: #0077be;
 }
 
 .successBadge {
-  color: #22c55e;
+  color: #16a34a;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -164,7 +167,7 @@
 }
 
 .errorBadge {
-  color: #ef4444;
+  color: #ba1a1a;
   display: flex;
   align-items: center;
   justify-content: center;

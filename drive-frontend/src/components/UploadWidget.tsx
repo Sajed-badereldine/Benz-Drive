@@ -47,7 +47,7 @@ export const UploadWidget: React.FC<UploadWidgetProps> = ({ tasks, onClose }) =>
       <div className={styles.widgetHeader} onClick={() => setIsMinimized(!isMinimized)}>
         <span className={styles.widgetTitle}>
           {uploadingCount > 0 && (
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#38bdf8', display: 'inline-block' }} />
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#0077be', display: 'inline-block' }} />
           )}
           {titleText}
         </span>
@@ -77,7 +77,7 @@ export const UploadWidget: React.FC<UploadWidgetProps> = ({ tasks, onClose }) =>
               <div key={task.id} className={styles.itemRow}>
                 <div className={styles.itemInfo}>
                   <div className={styles.fileIconWrapper}>
-                    <FileText size={18} style={{ color: '#38bdf8' }} />
+                    <FileText size={18} style={{ color: '#0077be' }} />
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div className={styles.itemName} title={task.fileName}>
