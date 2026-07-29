@@ -536,7 +536,6 @@ export default function DashboardPage() {
     if (entries.length === 0) return;
 
     setLoading(true);
-    showToast(`Starting upload of ${entries.length} item(s)...`, 'info');
 
     const folderPathCache = new Map<string, string | null>();
     let successCount = 0;
@@ -575,7 +574,6 @@ export default function DashboardPage() {
     }
 
     setLoading(false);
-    showToast(`Upload complete: ${successCount} of ${entries.length} file(s) saved!`, 'success');
     fetchFolderContents();
     fetchQuotaUsage();
   };

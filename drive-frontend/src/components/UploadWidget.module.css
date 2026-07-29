@@ -3,12 +3,10 @@
   bottom: 24px;
   right: 24px;
   width: 360px;
-  background: rgba(18, 22, 28, 0.88);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  background: #232731;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
   z-index: 1000;
   overflow: hidden;
   color: #f1f5f9;
@@ -20,27 +18,27 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.05);
+  padding: 14px 18px;
+  background: transparent;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
   user-select: none;
 }
 
 .widgetTitle {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: #ffffff;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .headerActions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .iconBtn {
@@ -73,7 +71,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
+  padding: 12px 18px;
   gap: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
@@ -85,15 +83,26 @@
 .itemInfo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
   flex: 1;
+}
+
+.fileIconWrapper {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(0, 119, 190, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .itemName {
   font-size: 13px;
   font-weight: 500;
-  color: #e2e8f0;
+  color: #f1f5f9;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -133,7 +142,7 @@
 }
 
 .progressRingCircleFg {
-  stroke: #0077be;
+  stroke: #38bdf8;
   stroke-width: 3;
   stroke-linecap: round;
   transition: stroke-dashoffset 0.2s ease;

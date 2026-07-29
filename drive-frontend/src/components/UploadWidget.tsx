@@ -76,7 +76,9 @@ export const UploadWidget: React.FC<UploadWidgetProps> = ({ tasks, onClose }) =>
             return (
               <div key={task.id} className={styles.itemRow}>
                 <div className={styles.itemInfo}>
-                  <FileText size={18} style={{ color: '#0077be', flexShrink: 0 }} />
+                  <div className={styles.fileIconWrapper}>
+                    <FileText size={18} style={{ color: '#38bdf8' }} />
+                  </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div className={styles.itemName} title={task.fileName}>
                       {task.fileName}
