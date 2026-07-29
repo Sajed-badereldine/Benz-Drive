@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, uploadWithProgress } from '@/lib/api';
+import { UploadWidget, UploadTask } from '@/components/UploadWidget';
 import { useToast } from '@/components/Toast';
 import styles from './dashboard.module.css';
 import {
@@ -106,6 +107,7 @@ export default function DashboardPage() {
   // Shared items states
   const [sharedFolders, setSharedFolders] = useState<any[]>([]);
   const [sharedFiles, setSharedFiles] = useState<any[]>([]);
+  const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
 
   // Share Modal states
   const [showShareModal, setShowShareModal] = useState(false);
@@ -477,6 +479,17 @@ export default function DashboardPage() {
       return false;
     }
 
+    const taskId = crypto.randomUUID();
+    const newTask: UploadTask = {
+      id: taskId,
+      fileName: file.name,
+      sizeBytes: file.size,
+      uploadedBytes: 0,
+      percent: 0,
+      status: 'uploading',
+    };
+    setUploadTasks((prev) => [newTask, ...prev]);
+
     try {
       const presignedData = await apiFetch('/files/presigned-upload', {
         method: 'POST',
@@ -488,22 +501,31 @@ export default function DashboardPage() {
         },
       });
 
-      const s3Response = await fetch(presignedData.uploadUrl, {
-        method: 'PUT',
-        body: file,
-      });
-
-      if (!s3Response.ok) {
-        throw new Error(`S3 upload failed: ${s3Response.statusText}`);
-      }
+      await uploadWithProgress(
+        presignedData.uploadUrl,
+        file,
+        file.type || 'application/octet-stream',
+        (percent, loadedBytes) => {
+          setUploadTasks((prev) =>
+            prev.map((t) => (t.id === taskId ? { ...t, percent, uploadedBytes: loadedBytes } : t))
+          );
+        }
+      );
 
       await apiFetch(`/files/confirm-upload/${presignedData.fileId}`, {
         method: 'POST',
       });
 
+      setUploadTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, percent: 100, uploadedBytes: file.size, status: 'completed' } : t))
+      );
+
       return true;
     } catch (err: any) {
       console.error(`Upload error for ${file.name}:`, err);
+      setUploadTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, status: 'error', errorMsg: err.message || `Failed to upload ${file.name}` } : t))
+      );
       showToast(err.message || `Failed to upload ${file.name}`, 'error');
       return false;
     }
@@ -2019,6 +2041,9 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
+
+        {/* Floating Google Drive-style Upload Progress Widget */}
+        <UploadWidget tasks={uploadTasks} onClose={() => setUploadTasks([])} />
       </main>
     </div>
   );

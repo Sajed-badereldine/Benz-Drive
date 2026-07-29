@@ -80,3 +80,41 @@ async function parseError(response: Response): Promise<Error> {
     return new Error(`Request failed with status ${response.status}`);
   }
 }
+
+export function uploadWithProgress(
+  url: string,
+  file: File,
+  contentType: string,
+  onProgress?: (percent: number, loadedBytes: number, totalBytes: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url, true);
+    if (contentType) {
+      xhr.setRequestHeader('Content-Type', contentType);
+    }
+
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+          onProgress(percent, event.loaded, event.total);
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new Error(`S3 Upload failed with status ${xhr.status}`));
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error('Network error occurred during file upload'));
+    };
+
+    xhr.send(file);
+  });
+}
