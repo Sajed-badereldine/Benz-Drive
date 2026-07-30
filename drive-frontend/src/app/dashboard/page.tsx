@@ -142,6 +142,14 @@ export default function DashboardPage() {
   const [marqueeBox, setMarqueeBox] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
 
+  const filteredFolders = searchQuery.trim() !== ''
+    ? (searchResults?.folders || [])
+    : folders;
+
+  const filteredFiles = searchQuery.trim() !== ''
+    ? (searchResults?.files || [])
+    : files;
+
   // Authenticate user on mount via HttpOnly Cookie (or localStorage fallback)
   useEffect(() => {
     const verifySession = async () => {
@@ -1187,14 +1195,6 @@ export default function DashboardPage() {
       default: return <FileIcon size={20} style={{ color: '#9ca3af' }} />;
     }
   };
-
-  const filteredFolders = searchQuery.trim() !== ''
-    ? (searchResults?.folders || [])
-    : folders;
-
-  const filteredFiles = searchQuery.trim() !== ''
-    ? (searchResults?.files || [])
-    : files;
 
   const quotaPercent = Math.min(100, (storageUsed / quotaBytes) * 100);
 
