@@ -135,6 +135,13 @@ export default function DashboardPage() {
   const [draggedItem, setDraggedItem] = useState<{ id: string; type: 'file' | 'folder'; name: string } | null>(null);
   const [activeDropTargetId, setActiveDropTargetId] = useState<string | null>(null);
 
+  // Multi-selection & Marquee states
+  const [selectedItems, setSelectedItems] = useState<Map<string, { id: string; type: 'file' | 'folder'; name: string }>>(new Map());
+  const [lastSelectedItem, setLastSelectedItem] = useState<{ id: string; type: 'file' | 'folder' } | null>(null);
+  const [isMarquee, setIsMarquee] = useState(false);
+  const [marqueeBox, setMarqueeBox] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null);
+  const contentAreaRef = useRef<HTMLDivElement>(null);
+
   // Authenticate user on mount via HttpOnly Cookie (or localStorage fallback)
   useEffect(() => {
     const verifySession = async () => {
@@ -800,6 +807,238 @@ export default function DashboardPage() {
     }
   };
 
+  // Bulk actions for multi-selection
+  const handleBulkTrash = async () => {
+    if (selectedItems.size === 0) return;
+    const items = Array.from(selectedItems.values());
+    try {
+      await Promise.all(
+        items.map((item) =>
+          item.type === 'file'
+            ? apiFetch(`/files/${item.id}/trash`, { method: 'PATCH' })
+            : apiFetch(`/files/folders/${item.id}/trash`, { method: 'PATCH' })
+        )
+      );
+      showToast(`${items.length} item${items.length > 1 ? 's' : ''} moved to trash.`, 'success');
+      setSelectedItems(new Map());
+      setActiveMenuId(null);
+      fetchFolderContents();
+      fetchQuotaUsage();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to trash selected items.', 'error');
+    }
+  };
+
+  const handleBulkStar = async () => {
+    if (selectedItems.size === 0) return;
+    const items = Array.from(selectedItems.values());
+    const allStarred = items.every((item) => {
+      if (item.type === 'file') {
+        return files.find((f) => f.id === item.id)?.isStarred;
+      } else {
+        return folders.find((f) => f.id === item.id)?.isStarred;
+      }
+    });
+
+    try {
+      await Promise.all(
+        items.map((item) =>
+          item.type === 'file'
+            ? apiFetch(`/files/${item.id}/star`, {
+                method: 'PATCH',
+                body: JSON.stringify({ isStarred: !allStarred }),
+              })
+            : apiFetch(`/files/folders/${item.id}/star`, {
+                method: 'PATCH',
+                body: JSON.stringify({ isStarred: !allStarred }),
+              })
+        )
+      );
+      showToast(`${items.length} item${items.length > 1 ? 's' : ''} ${allStarred ? 'unstarred' : 'starred'}.`, 'success');
+      setActiveMenuId(null);
+      fetchFolderContents();
+      fetchStarredItems();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update star status.', 'error');
+    }
+  };
+
+  const handleBulkDownload = async () => {
+    if (selectedItems.size === 0) return;
+    const selectedFiles = Array.from(selectedItems.values()).filter((i) => i.type === 'file');
+    if (selectedFiles.length === 0) {
+      showToast('No downloadable files selected.', 'info');
+      return;
+    }
+    setActiveMenuId(null);
+    for (const f of selectedFiles) {
+      handleDownload(f.id, f.name);
+    }
+  };
+
+  // Item click selection handler (single, Ctrl/Cmd toggle, Shift range)
+  const handleItemSelectClick = (
+    e: React.MouseEvent,
+    item: { id: string; type: 'file' | 'folder'; name: string },
+    allVisibleItems: Array<{ id: string; type: 'file' | 'folder'; name: string }>
+  ) => {
+    e.stopPropagation();
+    setActiveMenuId(null);
+
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedItems((prev) => {
+        const next = new Map(prev);
+        if (next.has(item.id)) {
+          next.delete(item.id);
+        } else {
+          next.set(item.id, item);
+        }
+        return next;
+      });
+      setLastSelectedItem(item);
+    } else if (e.shiftKey && lastSelectedItem) {
+      const lastIdx = allVisibleItems.findIndex((i) => i.id === lastSelectedItem.id);
+      const currentIdx = allVisibleItems.findIndex((i) => i.id === item.id);
+      if (lastIdx !== -1 && currentIdx !== -1) {
+        const start = Math.min(lastIdx, currentIdx);
+        const end = Math.max(lastIdx, currentIdx);
+        const range = allVisibleItems.slice(start, end + 1);
+        setSelectedItems((prev) => {
+          const next = new Map(prev);
+          range.forEach((i) => next.set(i.id, i));
+          return next;
+        });
+      }
+    } else {
+      setSelectedItems(new Map([[item.id, item]]));
+      setLastSelectedItem(item);
+    }
+  };
+
+  // Right-click context menu handler on item
+  const handleItemContextMenu = (
+    e: React.MouseEvent,
+    item: { id: string; type: 'file' | 'folder'; name: string }
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    setSelectedItems((prev) => {
+      if (!prev.has(item.id)) {
+        return new Map([[item.id, item]]);
+      }
+      return prev;
+    });
+    setLastSelectedItem(item);
+    setActiveMenuId(activeMenuId === item.id ? null : item.id);
+  };
+
+  // Marquee drag selection event handlers
+  const handleContainerMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+
+    const target = e.target as HTMLElement;
+    if (
+      target.closest(`.${styles.folderCard}`) ||
+      target.closest(`.${styles.fileRow}`) ||
+      target.closest('button') ||
+      target.closest('input') ||
+      target.closest('a')
+    ) {
+      return;
+    }
+
+    setActiveMenuId(null);
+
+    if (!e.ctrlKey && !e.metaKey) {
+      setSelectedItems(new Map());
+    }
+
+    if (!contentAreaRef.current) return;
+    const rect = contentAreaRef.current.getBoundingClientRect();
+    const startX = e.clientX - rect.left + contentAreaRef.current.scrollLeft;
+    const startY = e.clientY - rect.top + contentAreaRef.current.scrollTop;
+
+    setIsMarquee(true);
+    setMarqueeBox({ startX, startY, currentX: startX, currentY: startY });
+  };
+
+  const handleContainerMouseMove = (e: React.MouseEvent) => {
+    if (!isMarquee || !contentAreaRef.current || !marqueeBox) return;
+
+    const rect = contentAreaRef.current.getBoundingClientRect();
+    const currentX = e.clientX - rect.left + contentAreaRef.current.scrollLeft;
+    const currentY = e.clientY - rect.top + contentAreaRef.current.scrollTop;
+
+    setMarqueeBox((prev) => (prev ? { ...prev, currentX, currentY } : null));
+
+    const boxLeft = Math.min(marqueeBox.startX, currentX);
+    const boxTop = Math.min(marqueeBox.startY, currentY);
+    const boxWidth = Math.abs(currentX - marqueeBox.startX);
+    const boxHeight = Math.abs(currentY - marqueeBox.startY);
+
+    const elements = contentAreaRef.current.querySelectorAll('[data-selectable-id]');
+    const newlySelected = new Map(e.ctrlKey || e.metaKey ? selectedItems : []);
+
+    elements.forEach((el) => {
+      const htmlEl = el as HTMLElement;
+      const itemLeft = htmlEl.offsetLeft;
+      const itemTop = htmlEl.offsetTop;
+      const itemWidth = htmlEl.offsetWidth;
+      const itemHeight = htmlEl.offsetHeight;
+
+      const intersects = !(
+        itemLeft + itemWidth < boxLeft ||
+        boxLeft + boxWidth < itemLeft ||
+        itemTop + itemHeight < boxTop ||
+        boxTop + boxHeight < itemTop
+      );
+
+      const itemId = htmlEl.getAttribute('data-selectable-id');
+      const itemType = htmlEl.getAttribute('data-selectable-type') as 'file' | 'folder';
+      const itemName = htmlEl.getAttribute('data-selectable-name') || '';
+
+      if (intersects && itemId && itemType) {
+        newlySelected.set(itemId, { id: itemId, type: itemType, name: itemName });
+      }
+    });
+
+    setSelectedItems(newlySelected);
+  };
+
+  const handleContainerMouseUp = () => {
+    if (isMarquee) {
+      setIsMarquee(false);
+      setMarqueeBox(null);
+    }
+  };
+
+  // Global Keyboard Shortcuts (Esc to deselect, Ctrl+A to select all visible)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        setSelectedItems(new Map());
+        setActiveMenuId(null);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && activeTab === 'drive') {
+        e.preventDefault();
+        const allVisible = [
+          ...filteredFolders.map((f) => ({ id: f.id, type: 'folder' as const, name: f.name })),
+          ...filteredFiles.map((f) => ({ id: f.id, type: 'file' as const, name: f.fileName })),
+        ];
+        const newMap = new Map();
+        allVisible.forEach((item) => newMap.set(item.id, item));
+        setSelectedItems(newMap);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [filteredFolders, filteredFiles, activeTab]);
+
   // Restores from trash
   const handleRestoreFile = async (fileId: string) => {
     try {
@@ -1116,80 +1355,133 @@ export default function DashboardPage() {
               </h2>
             </div>
 
-            {/* Directory breadcrumbs / Search Header */}
+            {/* Directory breadcrumbs / Search Header / Selection Action Bar */}
             <div className={styles.toolbar}>
-              <div className={styles.breadcrumbs}>
-                {searchQuery.trim() !== '' ? (
-                  <span className={styles.breadcrumbActive}>
-                    Search Results for &ldquo;{searchQuery}&rdquo;
-                  </span>
-                ) : (
-                  <>
-                    <span
-                      onClick={() => setCurrentFolderId('root')}
-                      onDragOver={(e) => handleDragOverTarget(e, 'root')}
-                      onDragLeave={handleDragLeaveTarget}
-                      onDrop={(e) => handleDropOnTarget(e, 'root', 'My Drive')}
-                      className={`${styles.breadcrumbLink} ${activeDropTargetId === 'root' ? styles.dropTarget : ''}`}
+              {selectedItems.size > 0 ? (
+                <div className={styles.selectionBar}>
+                  <div className={styles.selectionInfo}>
+                    <button
+                      className={styles.closeSelectionBtn}
+                      onClick={() => setSelectedItems(new Map())}
+                      title="Deselect All (Esc)"
                     >
-                      My Drive
+                      <X size={18} />
+                    </button>
+                    <span className={styles.selectionCount}>
+                      {selectedItems.size} item{selectedItems.size > 1 ? 's' : ''} selected
                     </span>
-                    {breadcrumbs.map((crumb, idx) => (
-                      <React.Fragment key={crumb.id}>
-                        <span style={{ opacity: 0.5 }}>/</span>
-                        <span
-                          onClick={() => setCurrentFolderId(crumb.id)}
-                          onDragOver={(e) => handleDragOverTarget(e, crumb.id)}
-                          onDragLeave={handleDragLeaveTarget}
-                          onDrop={(e) => handleDropOnTarget(e, crumb.id, crumb.name)}
-                          className={`${idx === breadcrumbs.length - 1 ? styles.breadcrumbActive : styles.breadcrumbLink} ${activeDropTargetId === crumb.id ? styles.dropTarget : ''}`}
-                        >
-                          {crumb.name}
-                        </span>
-                      </React.Fragment>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              {/* Action buttons (hidden during search) */}
-              {searchQuery.trim() === '' && (
-                <div className={styles.actions}>
-                  <button onClick={() => setShowFolderModal(true)} className={styles.newFolderBtn}>
-                    <FolderPlus size={16} />
-                    <span>New Folder</span>
-                  </button>
-                  
-                  <label className={styles.fileInputLabel}>
-                    <Upload size={16} />
-                    <span>Upload File</span>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      multiple
-                      onChange={(e) => handleFileUpload(e.target.files)}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
-
-                  <label className={styles.fileInputLabel}>
-                    <FolderIcon size={16} />
-                    <span>Upload Folder</span>
-                    <input
-                      type="file"
-                      ref={folderInputRef}
-                      {...({ webkitdirectory: '', directory: '' } as any)}
-                      multiple
-                      onChange={(e) => handleFolderInputChange(e.target.files)}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
+                  </div>
+                  <div className={styles.selectionActions}>
+                    <button onClick={handleBulkStar} className={styles.selectionActionBtn} title="Star / Unstar Selected">
+                      <Star size={16} />
+                      <span>Star</span>
+                    </button>
+                    <button onClick={handleBulkDownload} className={styles.selectionActionBtn} title="Download Selected Files">
+                      <Download size={16} />
+                      <span>Download</span>
+                    </button>
+                    <button onClick={handleBulkTrash} className={`${styles.selectionActionBtn} ${styles.dangerActionBtn}`} title="Move Selected to Trash">
+                      <Trash2 size={16} />
+                      <span>Trash</span>
+                    </button>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  <div className={styles.breadcrumbs}>
+                    {searchQuery.trim() !== '' ? (
+                      <span className={styles.breadcrumbActive}>
+                        Search Results for &ldquo;{searchQuery}&rdquo;
+                      </span>
+                    ) : (
+                      <>
+                        <span
+                          onClick={() => setCurrentFolderId('root')}
+                          onDragOver={(e) => handleDragOverTarget(e, 'root')}
+                          onDragLeave={handleDragLeaveTarget}
+                          onDrop={(e) => handleDropOnTarget(e, 'root', 'My Drive')}
+                          className={`${styles.breadcrumbLink} ${activeDropTargetId === 'root' ? styles.dropTarget : ''}`}
+                        >
+                          My Drive
+                        </span>
+                        {breadcrumbs.map((crumb, idx) => (
+                          <React.Fragment key={crumb.id}>
+                            <span style={{ opacity: 0.5 }}>/</span>
+                            <span
+                              onClick={() => setCurrentFolderId(crumb.id)}
+                              onDragOver={(e) => handleDragOverTarget(e, crumb.id)}
+                              onDragLeave={handleDragLeaveTarget}
+                              onDrop={(e) => handleDropOnTarget(e, crumb.id, crumb.name)}
+                              className={`${idx === breadcrumbs.length - 1 ? styles.breadcrumbActive : styles.breadcrumbLink} ${activeDropTargetId === crumb.id ? styles.dropTarget : ''}`}
+                            >
+                              {crumb.name}
+                            </span>
+                          </React.Fragment>
+                        ))}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Action buttons (hidden during search) */}
+                  {searchQuery.trim() === '' && (
+                    <div className={styles.actions}>
+                      <button onClick={() => setShowFolderModal(true)} className={styles.newFolderBtn}>
+                        <FolderPlus size={16} />
+                        <span>New Folder</span>
+                      </button>
+                      
+                      <label className={styles.fileInputLabel}>
+                        <Upload size={16} />
+                        <span>Upload File</span>
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          multiple
+                          onChange={(e) => handleFileUpload(e.target.files)}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+
+                      <label className={styles.fileInputLabel}>
+                        <FolderIcon size={16} />
+                        <span>Upload Folder</span>
+                        <input
+                          type="file"
+                          ref={folderInputRef}
+                          {...({ webkitdirectory: '', directory: '' } as any)}
+                          multiple
+                          onChange={(e) => handleFolderInputChange(e.target.files)}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
             {/* Folder Explorer */}
-            <div className={styles.contentArea}>
+            <div
+              ref={contentAreaRef}
+              onMouseDown={handleContainerMouseDown}
+              onMouseMove={handleContainerMouseMove}
+              onMouseUp={handleContainerMouseUp}
+              onMouseLeave={handleContainerMouseUp}
+              style={{ position: 'relative' }}
+              className={styles.contentArea}
+            >
+              {isMarquee && marqueeBox && (
+                <div
+                  className={styles.selectionBox}
+                  style={{
+                    left: Math.min(marqueeBox.startX, marqueeBox.currentX),
+                    top: Math.min(marqueeBox.startY, marqueeBox.currentY),
+                    width: Math.abs(marqueeBox.currentX - marqueeBox.startX),
+                    height: Math.abs(marqueeBox.currentY - marqueeBox.startY),
+                  }}
+                />
+              )}
+
               {loading ? (
                 <div style={{ textAlign: 'center', marginTop: '40px', opacity: 0.7 }}>Loading directory contents...</div>
               ) : (
@@ -1206,75 +1498,107 @@ export default function DashboardPage() {
                     <div>
                       <h3 className={styles.sectionTitle}>Folders</h3>
                       <div className={styles.folderGrid}>
-                        {filteredFolders.map((folder) => (
-                          <div
-                            key={folder.id}
-                            draggable
-                            onDragStart={(e) => handleDragStartItem(e, folder.id, 'folder', folder.name)}
-                            onDragEnd={handleDragEndItem}
-                            onDragOver={(e) => handleDragOverTarget(e, folder.id)}
-                            onDragLeave={handleDragLeaveTarget}
-                            onDrop={(e) => handleDropOnTarget(e, folder.id, folder.name)}
-                            onDoubleClick={() => {
-                              setCurrentFolderId(folder.id);
-                              setSearchQuery('');
-                              setSearchResults(null);
-                            }}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setActiveMenuId(activeMenuId === folder.id ? null : folder.id);
-                            }}
-                            className={`${styles.folderCard} ${activeMenuId === folder.id ? styles.activeMenuCard : ''} ${draggedItem?.id === folder.id ? styles.dragging : ''} ${activeDropTargetId === folder.id ? styles.dropTarget : ''}`}
-                          >
-                            <FolderIcon size={20} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                            <span className={styles.folderName}>{folder.name}</span>
-                            
-                            <div className={styles.menuContainer} onClick={(e) => e.stopPropagation()}>
-                              <button
-                                onClick={(e) => handleToggleStarFolder(e, folder.id)}
-                                className={styles.actionIconBtn}
-                                title={folder.isStarred ? 'Unstar Folder' : 'Star Folder'}
-                              >
-                                <Star size={14} fill={folder.isStarred ? '#f59e0b' : 'none'} style={{ color: folder.isStarred ? '#f59e0b' : '#707882' }} />
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveMenuId(activeMenuId === folder.id ? null : folder.id);
-                                }}
-                                className={styles.actionIconBtn}
-                                title="More actions"
-                              >
-                                <MoreVertical size={14} />
-                              </button>
+                        {filteredFolders.map((folder) => {
+                          const allVisibleItems = [
+                            ...filteredFolders.map((f) => ({ id: f.id, type: 'folder' as const, name: f.name })),
+                            ...filteredFiles.map((f) => ({ id: f.id, type: 'file' as const, name: f.fileName })),
+                          ];
+                          const isSelected = selectedItems.has(folder.id);
+                          const isMultiMenu = isSelected && selectedItems.size > 1;
 
-                              {activeMenuId === folder.id && (
-                                <div className={styles.dropdownMenu}>
-                                  {isItemOwner(folder) && (
-                                    <button onClick={() => { setActiveMenuId(null); handleOpenShareModal({ id: folder.id, name: folder.name, type: 'folder' }); }} className={styles.dropdownItem}>
-                                      <Share2 size={15} />
-                                      <span>Share</span>
-                                    </button>
-                                  )}
-                                  <button onClick={() => { setActiveMenuId(null); setCurrentFolderId(folder.id); setSearchQuery(''); }} className={styles.dropdownItem}>
-                                    <FolderIcon size={15} />
-                                    <span>Open folder</span>
-                                  </button>
-                                  <button onClick={(e) => { setActiveMenuId(null); handleToggleStarFolder(e, folder.id); }} className={styles.dropdownItem}>
-                                    <Star size={15} fill={folder.isStarred ? '#f59e0b' : 'none'} style={{ color: folder.isStarred ? '#f59e0b' : '#404751' }} />
-                                    <span>{folder.isStarred ? 'Unstar folder' : 'Add to Starred'}</span>
-                                  </button>
-                                  <div className={styles.dropdownDivider} />
-                                  <button onClick={() => { setActiveMenuId(null); handleTrashFolder(folder.id); }} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
-                                    <Trash2 size={15} />
-                                    <span>Move to trash</span>
-                                  </button>
-                                </div>
-                              )}
+                          return (
+                            <div
+                              key={folder.id}
+                              data-selectable-id={folder.id}
+                              data-selectable-type="folder"
+                              data-selectable-name={folder.name}
+                              draggable
+                              onDragStart={(e) => handleDragStartItem(e, folder.id, 'folder', folder.name)}
+                              onDragEnd={handleDragEndItem}
+                              onDragOver={(e) => handleDragOverTarget(e, folder.id)}
+                              onDragLeave={handleDragLeaveTarget}
+                              onDrop={(e) => handleDropOnTarget(e, folder.id, folder.name)}
+                              onClick={(e) => handleItemSelectClick(e, { id: folder.id, type: 'folder', name: folder.name }, allVisibleItems)}
+                              onDoubleClick={() => {
+                                setCurrentFolderId(folder.id);
+                                setSearchQuery('');
+                                setSearchResults(null);
+                              }}
+                              onContextMenu={(e) => handleItemContextMenu(e, { id: folder.id, type: 'folder', name: folder.name })}
+                              className={`${styles.folderCard} ${isSelected ? styles.selectedItemCard : ''} ${activeMenuId === folder.id ? styles.activeMenuCard : ''} ${draggedItem?.id === folder.id ? styles.dragging : ''} ${activeDropTargetId === folder.id ? styles.dropTarget : ''}`}
+                            >
+                              <FolderIcon size={20} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                              <span className={styles.folderName}>{folder.name}</span>
+                              
+                              <div className={styles.menuContainer} onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={(e) => handleToggleStarFolder(e, folder.id)}
+                                  className={styles.actionIconBtn}
+                                  title={folder.isStarred ? 'Unstar Folder' : 'Star Folder'}
+                                >
+                                  <Star size={14} fill={folder.isStarred ? '#f59e0b' : 'none'} style={{ color: folder.isStarred ? '#f59e0b' : '#707882' }} />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuId(activeMenuId === folder.id ? null : folder.id);
+                                  }}
+                                  className={styles.actionIconBtn}
+                                  title="More actions"
+                                >
+                                  <MoreVertical size={14} />
+                                </button>
+
+                                {activeMenuId === folder.id && (
+                                  <div className={styles.dropdownMenu}>
+                                    {isMultiMenu ? (
+                                      <>
+                                        <div className={styles.dropdownHeader}>
+                                          {selectedItems.size} items selected
+                                        </div>
+                                        <button onClick={handleBulkStar} className={styles.dropdownItem}>
+                                          <Star size={15} />
+                                          <span>Star selected items</span>
+                                        </button>
+                                        <button onClick={handleBulkDownload} className={styles.dropdownItem}>
+                                          <Download size={15} />
+                                          <span>Download selected files</span>
+                                        </button>
+                                        <div className={styles.dropdownDivider} />
+                                        <button onClick={handleBulkTrash} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
+                                          <Trash2 size={15} />
+                                          <span>Move {selectedItems.size} items to trash</span>
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        {isItemOwner(folder) && (
+                                          <button onClick={() => { setActiveMenuId(null); handleOpenShareModal({ id: folder.id, name: folder.name, type: 'folder' }); }} className={styles.dropdownItem}>
+                                            <Share2 size={15} />
+                                            <span>Share</span>
+                                          </button>
+                                        )}
+                                        <button onClick={() => { setActiveMenuId(null); setCurrentFolderId(folder.id); setSearchQuery(''); }} className={styles.dropdownItem}>
+                                          <FolderIcon size={15} />
+                                          <span>Open folder</span>
+                                        </button>
+                                        <button onClick={(e) => { setActiveMenuId(null); handleToggleStarFolder(e, folder.id); }} className={styles.dropdownItem}>
+                                          <Star size={15} fill={folder.isStarred ? '#f59e0b' : 'none'} style={{ color: folder.isStarred ? '#f59e0b' : '#404751' }} />
+                                          <span>{folder.isStarred ? 'Unstar folder' : 'Add to Starred'}</span>
+                                        </button>
+                                        <div className={styles.dropdownDivider} />
+                                        <button onClick={() => { setActiveMenuId(null); handleTrashFolder(folder.id); }} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
+                                          <Trash2 size={15} />
+                                          <span>Move to trash</span>
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -1284,108 +1608,140 @@ export default function DashboardPage() {
                     <div className={styles.filesSection}>
                       <h3 className={styles.sectionTitle}>Files</h3>
                       <div className={styles.fileList}>
-                        {filteredFiles.map((file) => (
-                          <div
-                            key={file.id}
-                            draggable
-                            onDragStart={(e) => handleDragStartItem(e, file.id, 'file', file.fileName)}
-                            onDragEnd={handleDragEndItem}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setActiveMenuId(activeMenuId === file.id ? null : file.id);
-                            }}
-                            className={`${styles.fileRow} ${activeMenuId === file.id ? styles.activeMenuRow : ''} ${draggedItem?.id === file.id ? styles.dragging : ''}`}
-                          >
-                            <div className={styles.fileInfo}>
-                              {getFileIcon(file.fileType)}
-                              <span className={styles.fileName}>{file.fileName}</span>
-                            </div>
-                            
-                            <div className={styles.fileMeta}>
-                              <span>{formatBytes(file.sizeBytes)}</span>
-                              <span>{new Date(file.createdAt).toLocaleDateString()}</span>
-                            </div>
+                        {filteredFiles.map((file) => {
+                          const allVisibleItems = [
+                            ...filteredFolders.map((f) => ({ id: f.id, type: 'folder' as const, name: f.name })),
+                            ...filteredFiles.map((f) => ({ id: f.id, type: 'file' as const, name: f.fileName })),
+                          ];
+                          const isSelected = selectedItems.has(file.id);
+                          const isMultiMenu = isSelected && selectedItems.size > 1;
 
-                            <div className={styles.fileActions}>
-                              {isItemOwner(file) && (
-                                <button
-                                  onClick={() => handleOpenShareModal({ id: file.id, name: file.fileName, type: 'file' })}
-                                  className={styles.actionIconBtn}
-                                  title="Share File"
-                                >
-                                  <Share2 size={15} />
-                                </button>
-                              )}
+                          return (
+                            <div
+                              key={file.id}
+                              data-selectable-id={file.id}
+                              data-selectable-type="file"
+                              data-selectable-name={file.fileName}
+                              draggable
+                              onDragStart={(e) => handleDragStartItem(e, file.id, 'file', file.fileName)}
+                              onDragEnd={handleDragEndItem}
+                              onClick={(e) => handleItemSelectClick(e, { id: file.id, type: 'file', name: file.fileName }, allVisibleItems)}
+                              onContextMenu={(e) => handleItemContextMenu(e, { id: file.id, type: 'file', name: file.fileName })}
+                              className={`${styles.fileRow} ${isSelected ? styles.selectedItemRow : ''} ${activeMenuId === file.id ? styles.activeMenuRow : ''} ${draggedItem?.id === file.id ? styles.dragging : ''}`}
+                            >
+                              <div className={styles.fileInfo}>
+                                {getFileIcon(file.fileType)}
+                                <span className={styles.fileName}>{file.fileName}</span>
+                              </div>
+                              
+                              <div className={styles.fileMeta}>
+                                <span>{formatBytes(file.sizeBytes)}</span>
+                                <span>{new Date(file.createdAt).toLocaleDateString()}</span>
+                              </div>
 
-                              <button
-                                onClick={(e) => handleToggleStarFile(e, file.id)}
-                                className={styles.actionIconBtn}
-                                title={file.isStarred ? 'Unstar File' : 'Star File'}
-                              >
-                                <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} style={{ color: file.isStarred ? '#f59e0b' : '#707882' }} />
-                              </button>
-
-                              <button
-                                onClick={() => handleDownload(file.id, file.fileName)}
-                                className={styles.actionIconBtn}
-                                title="Download File"
-                              >
-                                <Download size={15} />
-                              </button>
-
-                              <button
-                                onClick={(e) => handleDuplicateFile(e, file.id)}
-                                className={styles.actionIconBtn}
-                                title="Make a Copy"
-                              >
-                                <Copy size={15} />
-                              </button>
-
-                              {/* More actions (...) dropdown menu */}
-                              <div className={styles.menuContainer} onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveMenuId(activeMenuId === file.id ? null : file.id);
-                                  }}
-                                  className={styles.actionIconBtn}
-                                  title="More actions"
-                                >
-                                  <MoreVertical size={16} />
-                                </button>
-
-                                {activeMenuId === file.id && (
-                                  <div className={styles.dropdownMenu}>
-                                    {isItemOwner(file) && (
-                                      <button onClick={() => { setActiveMenuId(null); handleOpenShareModal({ id: file.id, name: file.fileName, type: 'file' }); }} className={styles.dropdownItem}>
-                                        <Share2 size={15} />
-                                        <span>Share</span>
-                                      </button>
-                                    )}
-                                    <button onClick={() => { setActiveMenuId(null); handleDownload(file.id, file.fileName); }} className={styles.dropdownItem}>
-                                      <Download size={15} />
-                                      <span>Download</span>
-                                    </button>
-                                    <button onClick={(e) => { setActiveMenuId(null); handleToggleStarFile(e, file.id); }} className={styles.dropdownItem}>
-                                   <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} style={{ color: file.isStarred ? '#f59e0b' : '#404751' }} />
-                                   <span>{file.isStarred ? 'Unstar file' : 'Add to Starred'}</span>
-                                 </button>
-                                    <button onClick={(e) => handleDuplicateFile(e, file.id)} className={styles.dropdownItem}>
-                                      <Copy size={15} />
-                                      <span>Make a copy</span>
-                                    </button>
-                                    <div className={styles.dropdownDivider} />
-                                    <button onClick={() => { setActiveMenuId(null); handleTrashFile(file.id); }} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
-                                      <Trash2 size={15} />
-                                      <span>Move to trash</span>
-                                    </button>
-                                  </div>
+                              <div className={styles.fileActions}>
+                                {isItemOwner(file) && (
+                                  <button
+                                    onClick={() => handleOpenShareModal({ id: file.id, name: file.fileName, type: 'file' })}
+                                    className={styles.actionIconBtn}
+                                    title="Share File"
+                                  >
+                                    <Share2 size={15} />
+                                  </button>
                                 )}
+
+                                <button
+                                  onClick={(e) => handleToggleStarFile(e, file.id)}
+                                  className={styles.actionIconBtn}
+                                  title={file.isStarred ? 'Unstar File' : 'Star File'}
+                                >
+                                  <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} style={{ color: file.isStarred ? '#f59e0b' : '#707882' }} />
+                                </button>
+
+                                <button
+                                  onClick={() => handleDownload(file.id, file.fileName)}
+                                  className={styles.actionIconBtn}
+                                  title="Download File"
+                                >
+                                  <Download size={15} />
+                                </button>
+
+                                <button
+                                  onClick={(e) => handleDuplicateFile(e, file.id)}
+                                  className={styles.actionIconBtn}
+                                  title="Make a Copy"
+                                >
+                                  <Copy size={15} />
+                                </button>
+
+                                {/* More actions (...) dropdown menu */}
+                                <div className={styles.menuContainer} onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveMenuId(activeMenuId === file.id ? null : file.id);
+                                    }}
+                                    className={styles.actionIconBtn}
+                                    title="More actions"
+                                  >
+                                    <MoreVertical size={16} />
+                                  </button>
+
+                                  {activeMenuId === file.id && (
+                                    <div className={styles.dropdownMenu}>
+                                      {isMultiMenu ? (
+                                        <>
+                                          <div className={styles.dropdownHeader}>
+                                            {selectedItems.size} items selected
+                                          </div>
+                                          <button onClick={handleBulkStar} className={styles.dropdownItem}>
+                                            <Star size={15} />
+                                            <span>Star selected items</span>
+                                          </button>
+                                          <button onClick={handleBulkDownload} className={styles.dropdownItem}>
+                                            <Download size={15} />
+                                            <span>Download selected files</span>
+                                          </button>
+                                          <div className={styles.dropdownDivider} />
+                                          <button onClick={handleBulkTrash} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
+                                            <Trash2 size={15} />
+                                            <span>Move {selectedItems.size} items to trash</span>
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          {isItemOwner(file) && (
+                                            <button onClick={() => { setActiveMenuId(null); handleOpenShareModal({ id: file.id, name: file.fileName, type: 'file' }); }} className={styles.dropdownItem}>
+                                              <Share2 size={15} />
+                                              <span>Share</span>
+                                            </button>
+                                          )}
+                                          <button onClick={() => { setActiveMenuId(null); handleDownload(file.id, file.fileName); }} className={styles.dropdownItem}>
+                                            <Download size={15} />
+                                            <span>Download</span>
+                                          </button>
+                                          <button onClick={(e) => { setActiveMenuId(null); handleToggleStarFile(e, file.id); }} className={styles.dropdownItem}>
+                                            <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} style={{ color: file.isStarred ? '#f59e0b' : '#404751' }} />
+                                            <span>{file.isStarred ? 'Unstar file' : 'Add to Starred'}</span>
+                                          </button>
+                                          <button onClick={(e) => handleDuplicateFile(e, file.id)} className={styles.dropdownItem}>
+                                            <Copy size={15} />
+                                            <span>Make a copy</span>
+                                          </button>
+                                          <div className={styles.dropdownDivider} />
+                                          <button onClick={() => { setActiveMenuId(null); handleTrashFile(file.id); }} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
+                                            <Trash2 size={15} />
+                                            <span>Move to trash</span>
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}

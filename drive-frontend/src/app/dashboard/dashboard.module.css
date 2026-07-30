@@ -826,3 +826,112 @@
   transform: scale(1.02) !important;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
+
+/* Marquee Drag Selection Box */
+.selectionBox {
+  position: absolute;
+  border: 1.5px dashed #0077be;
+  background: rgba(0, 119, 190, 0.12);
+  pointer-events: none;
+  z-index: 99;
+  border-radius: 4px;
+  box-shadow: 0 0 10px rgba(0, 119, 190, 0.1);
+}
+
+/* Selected Folder Card & Selected File Row */
+.selectedItemCard {
+  background: rgba(0, 94, 151, 0.12) !important;
+  border-color: #0077be !important;
+  box-shadow: 0 0 0 2px rgba(0, 94, 151, 0.25), 0 4px 12px rgba(0, 94, 151, 0.1) !important;
+}
+
+.selectedItemRow {
+  background: rgba(0, 94, 151, 0.12) !important;
+  border-color: #0077be !important;
+  box-shadow: 0 0 0 2px rgba(0, 94, 151, 0.25), 0 4px 12px rgba(0, 94, 151, 0.08) !important;
+}
+
+/* Selection Top Action Bar */
+.selectionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 16px;
+  background: #005e97;
+  color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 94, 151, 0.2);
+}
+
+.selectionInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.closeSelectionBtn {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #ffffff;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.closeSelectionBtn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
+}
+
+.selectionCount {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.selectionActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.selectionActionBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.selectionActionBtn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.dangerActionBtn:hover {
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+}
+
+.dropdownHeader {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #707882;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 4px;
+}
