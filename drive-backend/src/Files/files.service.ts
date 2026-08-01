@@ -352,6 +352,7 @@ export class FilesService {
   async getFolderContents(folderId: string | null, userId: string) {
     let currentFolder: Folder | null = null;
     const isRoot = !folderId || folderId === 'root';
+    let isOwnerOrEditor = true;
     let folderOwnerId = userId;
 
     if (!isRoot) {
@@ -361,6 +362,7 @@ export class FilesService {
       }
       currentFolder = folderPerm.item as Folder;
       folderOwnerId = currentFolder.userId;
+      isOwnerOrEditor = folderPerm.isOwner || folderPerm.role === 'EDITOR';
     }
 
     // Fetch folders in this directory
@@ -388,6 +390,7 @@ export class FilesService {
       currentFolder,
       folders,
       files,
+      canEdit: isOwnerOrEditor,
     };
   }
 

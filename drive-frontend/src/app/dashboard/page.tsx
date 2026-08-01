@@ -119,6 +119,7 @@ export default function DashboardPage() {
   const [collaborators, setCollaborators] = useState<any[]>([]);
   const [shareLoading, setShareLoading] = useState(false);
   const [isPublicLinkEnabled, setIsPublicLinkEnabled] = useState(false);
+  const [canEditCurrentFolder, setCanEditCurrentFolder] = useState(true);
 
   // Search & Dialog UI states
   const [searchQuery, setSearchQuery] = useState('');
@@ -263,6 +264,7 @@ export default function DashboardPage() {
       setCurrentFolder(data.currentFolder);
       setFolders(data.folders || []);
       setFiles(data.files || []);
+      setCanEditCurrentFolder(data.canEdit !== undefined ? data.canEdit : true);
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
@@ -630,6 +632,10 @@ export default function DashboardPage() {
 
   // Handle file upload trigger
   const handleFileUpload = async (filesToUpload: FileList | null) => {
+    if (!canEditCurrentFolder) {
+      showToast('You have Viewer permissions for this folder and cannot upload files.', 'error');
+      return;
+    }
     if (!filesToUpload || filesToUpload.length === 0) return;
     const entries: BatchFileEntry[] = Array.from(filesToUpload).map(file => ({
       file,
@@ -641,6 +647,10 @@ export default function DashboardPage() {
 
   // Handle folder upload from input picker (webkitdirectory)
   const handleFolderInputChange = async (filesToUpload: FileList | null) => {
+    if (!canEditCurrentFolder) {
+      showToast('You have Viewer permissions for this folder and cannot upload files.', 'error');
+      return;
+    }
     if (!filesToUpload || filesToUpload.length === 0) return;
     const entries: BatchFileEntry[] = Array.from(filesToUpload).map(file => ({
       file,
@@ -1457,8 +1467,8 @@ export default function DashboardPage() {
                     )}
                   </div>
 
-                  {/* Action buttons (hidden during search) */}
-                  {searchQuery.trim() === '' && (
+                  {/* Action buttons (hidden during search or when in viewer-only mode) */}
+                  {searchQuery.trim() === '' && canEditCurrentFolder && (
                     <div className={styles.actions}>
                       <button onClick={() => setShowFolderModal(true)} className={styles.newFolderBtn}>
                         <FolderPlus size={16} />
@@ -1599,11 +1609,15 @@ export default function DashboardPage() {
                                           <Download size={15} />
                                           <span>Download selected files</span>
                                         </button>
-                                        <div className={styles.dropdownDivider} />
-                                        <button onClick={handleBulkTrash} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
-                                          <Trash2 size={15} />
-                                          <span>Move {selectedItems.size} items to trash</span>
-                                        </button>
+                                        {(canEditCurrentFolder || isItemOwner(folder)) && (
+                                          <>
+                                            <div className={styles.dropdownDivider} />
+                                            <button onClick={handleBulkTrash} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
+                                              <Trash2 size={15} />
+                                              <span>Move {selectedItems.size} items to trash</span>
+                                            </button>
+                                          </>
+                                        )}
                                       </>
                                     ) : (
                                       <>
@@ -1621,11 +1635,15 @@ export default function DashboardPage() {
                                           <Star size={15} fill={folder.isStarred ? '#f59e0b' : 'none'} style={{ color: folder.isStarred ? '#f59e0b' : '#404751' }} />
                                           <span>{folder.isStarred ? 'Unstar folder' : 'Add to Starred'}</span>
                                         </button>
-                                        <div className={styles.dropdownDivider} />
-                                        <button onClick={() => { setActiveMenuId(null); handleTrashFolder(folder.id); }} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
-                                          <Trash2 size={15} />
-                                          <span>Move to trash</span>
-                                        </button>
+                                        {(canEditCurrentFolder || isItemOwner(folder)) && (
+                                          <>
+                                            <div className={styles.dropdownDivider} />
+                                            <button onClick={() => { setActiveMenuId(null); handleTrashFolder(folder.id); }} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
+                                              <Trash2 size={15} />
+                                              <span>Move to trash</span>
+                                            </button>
+                                          </>
+                                        )}
                                       </>
                                     )}
                                   </div>
@@ -1738,10 +1756,15 @@ export default function DashboardPage() {
                                             <span>Download selected files</span>
                                           </button>
                                           <div className={styles.dropdownDivider} />
-                                          <button onClick={handleBulkTrash} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
-                                            <Trash2 size={15} />
-                                            <span>Move {selectedItems.size} items to trash</span>
-                                          </button>
+                                          {(canEditCurrentFolder || isItemOwner(file)) && (
+                                            <>
+                                              <div className={styles.dropdownDivider} />
+                                              <button onClick={handleBulkTrash} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
+                                                <Trash2 size={15} />
+                                                <span>Move {selectedItems.size} items to trash</span>
+                                              </button>
+                                            </>
+                                          )}
                                         </>
                                       ) : (
                                         <>
@@ -1759,15 +1782,21 @@ export default function DashboardPage() {
                                             <Star size={15} fill={file.isStarred ? '#f59e0b' : 'none'} style={{ color: file.isStarred ? '#f59e0b' : '#404751' }} />
                                             <span>{file.isStarred ? 'Unstar file' : 'Add to Starred'}</span>
                                           </button>
-                                          <button onClick={(e) => handleDuplicateFile(e, file.id)} className={styles.dropdownItem}>
-                                            <Copy size={15} />
-                                            <span>Make a copy</span>
-                                          </button>
-                                          <div className={styles.dropdownDivider} />
-                                          <button onClick={() => { setActiveMenuId(null); handleTrashFile(file.id); }} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
-                                            <Trash2 size={15} />
-                                            <span>Move to trash</span>
-                                          </button>
+                                          {canEditCurrentFolder && (
+                                            <button onClick={(e) => handleDuplicateFile(e, file.id)} className={styles.dropdownItem}>
+                                              <Copy size={15} />
+                                              <span>Make a copy</span>
+                                            </button>
+                                          )}
+                                          {(canEditCurrentFolder || isItemOwner(file)) && (
+                                            <>
+                                              <div className={styles.dropdownDivider} />
+                                              <button onClick={() => { setActiveMenuId(null); handleTrashFile(file.id); }} className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}>
+                                                <Trash2 size={15} />
+                                                <span>Move to trash</span>
+                                              </button>
+                                            </>
+                                          )}
                                         </>
                                       )}
                                     </div>
