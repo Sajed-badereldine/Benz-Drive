@@ -172,6 +172,12 @@ export default function DashboardPage() {
     return () => window.removeEventListener('click', handleClickOutside);
   }, []);
 
+  // Clear item selection and dropdown menu when navigating folders or switching tabs
+  useEffect(() => {
+    setSelectedItems(new Map());
+    setActiveMenuId(null);
+  }, [currentFolderId, activeTab]);
+
   // Helper to compute badge, background color, and icon for Quick Access bento cards
   const getFileBadgeInfo = (fileName: string, fileType: string) => {
     const ext = fileName.includes('.') ? fileName.split('.').pop()!.toUpperCase() : 'FILE';
