@@ -38,7 +38,9 @@ import {
   MoreHorizontal,
   Share2,
   Link,
-  X
+  X,
+  Lock,
+  Globe
 } from 'lucide-react';
 
 interface FileItem {
@@ -116,6 +118,7 @@ export default function DashboardPage() {
   const [shareRole, setShareRole] = useState<'VIEWER' | 'EDITOR'>('VIEWER');
   const [collaborators, setCollaborators] = useState<any[]>([]);
   const [shareLoading, setShareLoading] = useState(false);
+  const [isPublicLinkEnabled, setIsPublicLinkEnabled] = useState(false);
 
   // Search & Dialog UI states
   const [searchQuery, setSearchQuery] = useState('');
@@ -340,12 +343,38 @@ export default function DashboardPage() {
     setShareRole('VIEWER');
     setShareLoading(true);
     try {
-      const data = await apiFetch(`/files/shares/item/${item.type}/${item.id}`);
-      setCollaborators(data || []);
+      const [collabs, linkData] = await Promise.all([
+        apiFetch(`/files/shares/item/${item.type}/${item.id}`),
+        apiFetch('/files/shares/link', {
+          method: 'POST',
+          body: JSON.stringify({ itemId: item.id, itemType: item.type }),
+        }),
+      ]);
+      setCollaborators(collabs || []);
+      setIsPublicLinkEnabled(linkData?.isPublicLinkEnabled || false);
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
       setShareLoading(false);
+    }
+  };
+
+  // Toggle General Access setting (Restricted vs Anyone with the link)
+  const handleToggleGeneralAccess = async (enabled: boolean) => {
+    if (!shareTarget) return;
+    try {
+      await apiFetch('/files/shares/link-access', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          itemId: shareTarget.id,
+          itemType: shareTarget.type,
+          isPublicLinkEnabled: enabled,
+        }),
+      });
+      setIsPublicLinkEnabled(enabled);
+      showToast(`General access updated to ${enabled ? 'Anyone with the link' : 'Restricted'}`, 'success');
+    } catch (err: any) {
+      showToast(err.message, 'error');
     }
   };
 
@@ -2388,7 +2417,41 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              {/* General Access Section (Google Drive Style) */}
+              <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#707882', marginBottom: '8px' }}>
+                  General Access
+                </h4>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(0,0,0,0.03)', borderRadius: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {isPublicLinkEnabled ? (
+                      <Globe size={18} style={{ color: '#10b981' }} />
+                    ) : (
+                      <Lock size={18} style={{ color: '#005e97' }} />
+                    )}
+                    <div>
+                      <p style={{ fontSize: '13px', fontWeight: 600, margin: 0 }}>
+                        {isPublicLinkEnabled ? 'Anyone with the link' : 'Restricted'}
+                      </p>
+                      <p style={{ fontSize: '11px', color: '#707882', margin: 0 }}>
+                        {isPublicLinkEnabled
+                          ? 'Anyone on the internet with the link can view'
+                          : 'Only people added under "People with access" can open with this link'}
+                      </p>
+                    </div>
+                  </div>
+                  <select
+                    value={isPublicLinkEnabled ? 'public' : 'restricted'}
+                    onChange={(e) => handleToggleGeneralAccess(e.target.value === 'public')}
+                    style={{ fontSize: '12px', fontWeight: 600, padding: '6px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', cursor: 'pointer' }}
+                  >
+                    <option value="restricted">🔒 Restricted</option>
+                    <option value="public">🌐 Anyone with link</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <button onClick={handleCopyShareLink} className={styles.newFolderBtn} style={{ background: 'rgba(0,119,190,0.1)', color: '#0077be', margin: 0 }}>
                   <Link size={15} />
                   <span>Copy share link</span>

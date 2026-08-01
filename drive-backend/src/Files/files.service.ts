@@ -1046,11 +1046,11 @@ export class FilesService {
     return { files: Array.from(fileMap.values()), folders: Array.from(folderMap.values()) };
   }
 
-  // Create or retrieve public share link token
+  // Create or retrieve share link record & token
   async createShareLink(itemType: 'file' | 'folder', itemId: string, ownerId: string) {
     const perm = await this.getUserPermission(itemType, itemId, ownerId);
-    if (!perm.isOwner) {
-      throw new ForbiddenException('Only the owner can create a shareable link');
+    if (!perm.isOwner && perm.role !== 'EDITOR') {
+      throw new ForbiddenException('Only owners and editors can manage share links');
     }
 
     let share = await this.shareRepository.findOne({
@@ -1067,14 +1067,53 @@ export class FilesService {
         folderId: itemType === 'folder' ? itemId : null,
         role: ShareRole.VIEWER,
         shareToken,
+        isPublicLinkEnabled: false, // Default: Restricted
       });
       await this.shareRepository.save(share);
     }
 
-    return { shareToken: share.shareToken, linkUrl: `/share/${share.shareToken}` };
+    return {
+      shareToken: share.shareToken,
+      linkUrl: `/share/${share.shareToken}`,
+      isPublicLinkEnabled: share.isPublicLinkEnabled,
+    };
   }
 
-  // Access an item via link token (claims access for logged in user)
+  // Update General Access setting (Restricted vs Anyone with the link)
+  async updateLinkAccess(itemType: 'file' | 'folder', itemId: string, isPublicLinkEnabled: boolean, ownerId: string) {
+    const perm = await this.getUserPermission(itemType, itemId, ownerId);
+    if (!perm.isOwner && perm.role !== 'EDITOR') {
+      throw new ForbiddenException('Only owners and editors can change link access settings');
+    }
+
+    let share = await this.shareRepository.findOne({
+      where: itemType === 'file'
+        ? { fileId: itemId, granteeId: IsNull() }
+        : { folderId: itemId, granteeId: IsNull() },
+    });
+
+    if (!share) {
+      const shareToken = crypto.randomBytes(16).toString('hex');
+      share = this.shareRepository.create({
+        ownerId,
+        fileId: itemType === 'file' ? itemId : null,
+        folderId: itemType === 'folder' ? itemId : null,
+        role: ShareRole.VIEWER,
+        shareToken,
+        isPublicLinkEnabled,
+      });
+    } else {
+      share.isPublicLinkEnabled = isPublicLinkEnabled;
+    }
+
+    await this.shareRepository.save(share);
+    return {
+      message: `General access updated to ${isPublicLinkEnabled ? 'Anyone with the link' : 'Restricted'}`,
+      isPublicLinkEnabled: share.isPublicLinkEnabled,
+    };
+  }
+
+  // Access an item via link token (checks permissions or public access)
   async accessShareLink(shareToken: string, granteeId: string) {
     const share = await this.shareRepository.findOne({
       where: { shareToken },
@@ -1085,30 +1124,33 @@ export class FilesService {
       throw new NotFoundException('Invalid or expired share link');
     }
 
-    // Link share to user if not already linked and no existing share record for this user
-    if (share.ownerId !== granteeId) {
-      const existingShare = await this.shareRepository.findOne({
-        where: share.fileId
-          ? { fileId: share.fileId, granteeId }
-          : { folderId: share.folderId!, granteeId },
-      });
+    const itemType = share.fileId ? 'file' : 'folder';
+    const itemId = (share.fileId || share.folderId)!;
 
-      if (!existingShare) {
-        const userShare = this.shareRepository.create({
-          ownerId: share.ownerId,
-          granteeId,
-          fileId: share.fileId,
-          folderId: share.folderId,
-          role: share.role,
-        });
-        await this.shareRepository.save(userShare);
-      }
+    // Check user's permission on this item
+    const userPerm = await this.getUserPermission(itemType, itemId, granteeId);
+
+    // If user is NOT owner AND has no explicit share permission AND public link is DISABLED (Restricted)
+    if (!userPerm.isOwner && !userPerm.role && !share.isPublicLinkEnabled) {
+      throw new ForbiddenException('You need access. You do not have permission to view this item.');
+    }
+
+    // If public link is enabled and user doesn't have an explicit share record, grant viewer access
+    if (!userPerm.isOwner && !userPerm.role && share.isPublicLinkEnabled) {
+      const userShare = this.shareRepository.create({
+        ownerId: share.ownerId,
+        granteeId,
+        fileId: share.fileId,
+        folderId: share.folderId,
+        role: share.role,
+      });
+      await this.shareRepository.save(userShare);
     }
 
     return {
-      itemType: share.fileId ? 'file' : 'folder',
-      itemId: share.fileId || share.folderId,
-      role: share.role,
+      itemType,
+      itemId,
+      role: userPerm.role || share.role,
       file: share.file,
       folder: share.folder,
     };

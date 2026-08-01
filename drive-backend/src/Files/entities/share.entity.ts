@@ -35,6 +35,9 @@ export class Share {
   @Column({ type: 'varchar', nullable: true })
   shareToken: string | null;
 
+  @Column({ default: false })
+  isPublicLinkEnabled: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

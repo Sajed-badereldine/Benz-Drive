@@ -320,6 +320,17 @@ export class FilesController {
     return this.filesService.createShareLink(itemType, itemId, req.user.id);
   }
 
+  // Update General Access setting for a share link (PATCH /files/shares/link-access)
+  @Patch('shares/link-access')
+  async updateLinkAccess(
+    @Body('itemType') itemType: 'file' | 'folder',
+    @Body('itemId') itemId: string,
+    @Body('isPublicLinkEnabled') isPublicLinkEnabled: boolean,
+    @Req() req: any,
+  ) {
+    return this.filesService.updateLinkAccess(itemType, itemId, isPublicLinkEnabled, req.user.id);
+  }
+
   // Access a shared item via link token (GET /files/shares/access-link/:token)
   @Get('shares/access-link/:token')
   async accessShareLink(@Param('token') token: string, @Req() req: any) {
