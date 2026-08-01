@@ -37,6 +37,17 @@ export default function ShareLinkPage() {
     accessLink();
   }, [token, router]);
 
+  const handleSwitchAccount = async () => {
+    try {
+      await apiFetch('/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      localStorage.clear();
+      window.location.href = `/login?redirect=/share/${token}`;
+    }
+  };
+
   return (
     <div style={{
       display: 'flex',
@@ -126,7 +137,7 @@ export default function ShareLinkPage() {
             </button>
 
             <button
-              onClick={() => router.push(`/login?redirect=/share/${token}`)}
+              onClick={handleSwitchAccount}
               style={{
                 display: 'flex',
                 alignItems: 'center',

@@ -57,7 +57,8 @@ export default function LoginPage() {
         showToast(response.message || 'Two-factor code sent to your email.', 'success');
       } else if (response.data?.user) {
         showToast(response.message || 'Successfully signed in!', 'success');
-        router.push('/dashboard');
+        const redirectTarget = new URLSearchParams(window.location.search).get('redirect') || '/dashboard';
+        router.push(redirectTarget);
       }
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -105,7 +106,8 @@ export default function LoginPage() {
 
       if (response.data?.user) {
         showToast('Successfully signed in!', 'success');
-        router.push('/dashboard');
+        const redirectTarget = new URLSearchParams(window.location.search).get('redirect') || '/dashboard';
+        router.push(redirectTarget);
       }
     } catch (err: any) {
       showToast(err.message, 'error');
