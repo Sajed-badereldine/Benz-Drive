@@ -2474,8 +2474,8 @@ export default function DashboardPage() {
                     onChange={(e) => handleToggleGeneralAccess(e.target.value === 'public')}
                     style={{ fontSize: '12px', fontWeight: 600, padding: '6px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', cursor: 'pointer' }}
                   >
-                    <option value="restricted">🔒 Restricted</option>
-                    <option value="public">🌐 Anyone with link</option>
+                    <option value="restricted">Restricted</option>
+                    <option value="public">Anyone with link</option>
                   </select>
                 </div>
               </div>
