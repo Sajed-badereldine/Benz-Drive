@@ -15,7 +15,7 @@ A modern, high-performance cloud storage web application built with **NestJS**, 
 
 The platform is designed around a multi-tier, decoupled micro-architecture with the frontend hosted on **Vercel Edge Network** (`benzdrive.site`) and backend services running on **AWS** with automated **CI/CD** pipelines and **Terraform** infrastructure provisioning.
 
-![BenzDrive Architecture Diagram](./docs/assets/architecture.png)
+![BenzDrive Architecture Diagram](docs/assets/architecture.png)
 
 ### Key Architectural Concepts:
 - **Frontend Tier (Vercel Edge Network)**: Next.js v16 App Router application deployed globally on Vercel Edge Network, offering instant CSR/SSR rendering and custom domain routing (`https://www.benzdrive.site`).
@@ -58,20 +58,26 @@ The platform is designed around a multi-tier, decoupled micro-architecture with 
 
 ## 📸 Screenshots & Workflow
 
-### 1. Dashboard & Desktop Drag Marquee Selection
-![Dashboard & Marquee Selection](./docs/assets/screenshots/dashboard.png)
+### 1. Two-Factor Authentication (2FA) Verification
+![2FA Authentication Verification](docs/assets/screenshots/2FA-page.png)
 
-### 2. File Uploading & Real-Time Progress Widget
-![Upload Progress Widget](./docs/assets/screenshots/upload-progress.png)
+### 2. Main Dashboard & Desktop File Explorer
+![Main Dashboard](docs/assets/screenshots/Main-Dashborad.png)
 
-### 3. Share Modal & General Access Settings
-![Share Modal](./docs/assets/screenshots/share-modal.png)
+### 3. File Uploading & Real-Time Progress Widget
+![Upload Progress Widget](docs/assets/screenshots/Upload.png)
 
-### 4. "You Need Access" Screen (Restricted Link View)
-![You Need Access Screen](./docs/assets/screenshots/access-denied.png)
+### 4. Share Modal & Access Control Settings
+![Share Modal](docs/assets/screenshots/Share-Page.png)
 
-### 5. Trash Bin & Soft-Delete Recovery
-![Trash Bin](./docs/assets/screenshots/trash-bin.png)
+### 5. "You Need Access" Screen (Restricted Link View)
+![Restricted Access View](docs/assets/screenshots/Restriction-Page.png)
+
+### 6. Starred Items & Favorites View
+![Starred View](docs/assets/screenshots/Starrred-Page.png)
+
+### 7. Trash Bin & Soft-Delete Recovery
+![Trash Bin](docs/assets/screenshots/Trash-Page.png)
 
 ---
 
@@ -99,7 +105,7 @@ The platform is designed around a multi-tier, decoupled micro-architecture with 
 BenzDrive utilizes automated **GitHub Actions** workflows (`.github/workflows/`) for zero-downtime continuous integration and infrastructure management.
 
 ### 1. Full CI/CD Workflow Pipeline Structure
-![GitHub Actions CI/CD Workflow Structure](./docs/assets/screenshots/Workflow-Structure.png)
+![GitHub Actions CI/CD Workflow Structure](docs/assets/screenshots/Workflow-Structure.png)
 
 ### 2. Production Deployment Workflow (`deploy.yml`)
 Triggered automatically on every push to the `main` branch:
@@ -107,21 +113,21 @@ Triggered automatically on every push to the `main` branch:
 #### A. Job 1: Terraform Provisioning (`terraform`)
 Automatically initializes remote S3 state bucket (`${bucket_name}-tfstate`), validates, and executes `terraform apply -auto-approve` to provision VPC, S3, RDS, and Lambda resources.
 
-![Terraform Provisioning Job](./docs/assets/screenshots/Terraform-initilizer.png)
+![Terraform Provisioning Job](docs/assets/screenshots/Terraform-initilizer.png)
 
 #### B. Job 2: Backend Lambda Deployment (`backend-deploy`)
 Compiles NestJS TypeScript application, packages production bundle (`npm install --omit=dev`), and deploys directly to AWS Lambda (`benzdrive-backend`) via `aws lambda update-function-code`.
 
-![Backend Lambda Deployment Job](./docs/assets/screenshots/Backend-Deploy.png)
+![Backend Lambda Deployment Job](docs/assets/screenshots/Backend-Deploy.png)
 
 #### C. Job 3: Frontend Compilation Check (`frontend-check`)
 Verifies production Next.js build integrity (`npm run build`) to ensure zero build errors before release.
 
-![Frontend Compilation Check Job](./docs/assets/screenshots/Front-Initiializing.png)
+![Frontend Compilation Check Job](docs/assets/screenshots/Front-Initiializing.png)
 
 ### 3. Infrastructure Teardown Workflow (`destroy.yml`)
 Manual dispatch workflow allowing quick teardown of all AWS resources (`terraform destroy -auto-approve`) for cost management and dev testing.
 
-![Infrastructure Teardown Workflow](./docs/assets/screenshots/destory-workflow.png)
+![Infrastructure Teardown Workflow](docs/assets/screenshots/destory-workflow.png)
 
 ---
